@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
-import { formatDateTime } from "@/lib/format";
+import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import type { ClienteImportado, Importacao, StatusAnalise } from "@/lib/tipos";
 
 export const Route = createFileRoute("/importacoes")({
@@ -57,6 +57,9 @@ function DetalheImportacao({ itens }: { itens: ClienteImportado[] }) {
         <TableHeader>
           <TableRow>
             <TableHead>Nome importado</TableHead>
+            <TableHead>CPF</TableHead>
+            <TableHead className="text-right">Valor</TableHead>
+            <TableHead>Data</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -64,6 +67,15 @@ function DetalheImportacao({ itens }: { itens: ClienteImportado[] }) {
           {itens.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="font-medium">{item.nome_original}</TableCell>
+              <TableCell className="tabular text-sm text-muted-foreground">
+                {item.cpf_original ?? "—"}
+              </TableCell>
+              <TableCell className="text-right tabular text-sm">
+                {item.valor_original != null ? formatBRL(item.valor_original) : "—"}
+              </TableCell>
+              <TableCell className="tabular text-sm">
+                {item.data_original ? formatDate(item.data_original) : "—"}
+              </TableCell>
               <TableCell>
                 <BadgeStatus
                   texto={ROTULO_STATUS[item.status_analise].texto}

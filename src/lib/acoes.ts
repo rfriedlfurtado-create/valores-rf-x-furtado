@@ -7,7 +7,13 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import { chaveParRejeitado, compararNomes, normalizarNome, type LimiaresSimilaridade } from "./similarity";
+import {
+  chaveParRejeitado,
+  compararNomes,
+  normalizarCPF,
+  normalizarNome,
+  type LimiaresSimilaridade,
+} from "./similarity";
 import type { Cliente, ClienteComTotais, TipoPagamento } from "./tipos";
 
 function erro(message: string): never {
@@ -231,6 +237,7 @@ interface CandidatoBase {
   clienteId: string;
   nomeNormalizado: string;
   possuiPagamento: boolean;
+  cpfNormalizado: string | null;
 }
 
 /**
@@ -241,8 +248,15 @@ interface CandidatoBase {
  * Cada nome novo entra como um cliente próprio; a união depende de
  * confirmação manual na tela de correspondências.
  */
+export interface LinhaImportacao {
+  nome: string;
+  cpf?: string | null;
+  valor?: number | null;
+  data?: string | null;
+}
+
 export async function importarNomes(params: {
-  nomes: string[];
+  registros: LinhaImportacao[];
   nomeImportacao: string;
   origemArquivo: string | null;
   tipoOrigem: "arquivo" | "manual";
@@ -251,7 +265,9 @@ export async function importarNomes(params: {
   rejeicoes: { nome_1_normalizado: string; nome_2_normalizado: string }[];
   limiares: LimiaresSimilaridade;
 }): Promise<ResultadoImportacao> {
-  const nomes = params.nomes.map((n) => n.trim()).filter((n) => n.length > 0);
+  const nomes = params.registros
+    .map((r) => ({ ...r, nome: r.nome.trim() }))
+    .filter((r) => r.nome.length > 0);
   if (nomes.length === 0) erro("Nenhum nome válido encontrado.");
 
   const agora = new Date().toISOString();
@@ -273,16 +289,19 @@ export async function importarNomes(params: {
   const pagamentosPorCliente = new Map(
     params.base.map((c) => [c.id, c.quantidadePagamentos > 0] as const),
   );
+  const cpfPorCliente = new Map(params.base.map((c) => [c.id, normalizarCPF(c.cpf)] as const));
   const candidatos: CandidatoBase[] = [
     ...params.base.map((c) => ({
       clienteId: c.id,
       nomeNormalizado: c.nome_normalizado,
       possuiPagamento: c.quantidadePagamentos > 0,
+      cpfNormalizado: normalizarCPF(c.cpf),
     })),
     ...params.variacoes.map((v) => ({
       clienteId: v.cliente_id,
       nomeNormalizado: v.nome_normalizado,
       possuiPagamento: pagamentosPorCliente.get(v.cliente_id) ?? false,
+      cpfNormalizado: cpfPorCliente.get(v.cliente_id) ?? null,
     })),
   ];
 
@@ -294,8 +313,10 @@ export async function importarNomes(params: {
   let totalJaPagos = 0;
   let totalPossiveis = 0;
 
-  for (const nome of nomes) {
+  for (const registro of nomes) {
+    const nome = registro.nome;
     const normalizado = normalizarNome(nome);
+    const cpfImportado = normalizarCPF(registro.cpf);
 
     // 1) O nome entra como cliente próprio da nova listagem.
     const clienteRes = await supabase
@@ -303,6 +324,7 @@ export async function importarNomes(params: {
       .insert({
         nome,
         nome_normalizado: normalizado,
+        cpf: registro.cpf?.trim() || null,
         origem_importacao: params.nomeImportacao,
         data_importacao: agora,
       })
@@ -311,26 +333,37 @@ export async function importarNomes(params: {
     if (clienteRes.error) erro(clienteRes.error.message);
     const novoClienteId = (clienteRes.data as { id: string }).id;
 
-    // 2) Comparação com toda a base histórica.
+    // 2) Comparação com toda a base histórica. CPF exato tem prioridade
+    // máxima: quando bate, o par é tratado como IGUAL mesmo que os nomes
+    // estejam escritos de forma bem diferente (apelidos, abreviações etc).
     const melhoresPorCliente = new Map<
       string,
-      { percentual: number; classificacao: string; possuiPagamento: boolean }
+      { percentual: number; classificacao: string; possuiPagamento: boolean; porCpf: boolean }
     >();
 
     for (const candidato of candidatos) {
       if (candidato.clienteId === novoClienteId) continue;
-      const [n1, n2] = chaveParRejeitado(normalizado, candidato.nomeNormalizado);
-      if (rejeitados.has(`${n1}|${n2}`)) continue;
+
+      const cpfBate =
+        !!cpfImportado && !!candidato.cpfNormalizado && cpfImportado === candidato.cpfNormalizado;
+
+      if (!cpfBate) {
+        const [n1, n2] = chaveParRejeitado(normalizado, candidato.nomeNormalizado);
+        if (rejeitados.has(`${n1}|${n2}`)) continue;
+      }
 
       const resultado = compararNomes(normalizado, candidato.nomeNormalizado, params.limiares);
-      if (!resultado.classificacao || resultado.percentual < params.limiares.minimo) continue;
+      const percentual = cpfBate ? 100 : resultado.percentual;
+      const classificacao = cpfBate ? "igual" : resultado.classificacao;
+      if (!classificacao || percentual < params.limiares.minimo) continue;
 
       const anterior = melhoresPorCliente.get(candidato.clienteId);
-      if (!anterior || resultado.percentual > anterior.percentual) {
+      if (!anterior || percentual > anterior.percentual || (cpfBate && !anterior.porCpf)) {
         melhoresPorCliente.set(candidato.clienteId, {
-          percentual: resultado.percentual,
-          classificacao: resultado.classificacao,
+          percentual,
+          classificacao,
           possuiPagamento: candidato.possuiPagamento,
+          porCpf: cpfBate,
         });
       }
     }
@@ -347,6 +380,9 @@ export async function importarNomes(params: {
         nome_normalizado: normalizado,
         cliente_vinculado_id: novoClienteId,
         status_analise: statusAnalise,
+        cpf_original: registro.cpf?.trim() || null,
+        valor_original: registro.valor ?? null,
+        data_original: registro.data ?? null,
       })
       .select()
       .single();
@@ -370,7 +406,12 @@ export async function importarNomes(params: {
     }
 
     // O novo cliente também passa a ser candidato para os próximos nomes da lista.
-    candidatos.push({ clienteId: novoClienteId, nomeNormalizado: normalizado, possuiPagamento: false });
+    candidatos.push({
+      clienteId: novoClienteId,
+      nomeNormalizado: normalizado,
+      possuiPagamento: false,
+      cpfNormalizado: cpfImportado,
+    });
   }
 
   const atualizacao = await supabase

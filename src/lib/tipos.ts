@@ -9,12 +9,7 @@ export type TipoPagamento = "pix" | "transferencia" | "dinheiro" | "cheque" | "b
 export type StatusCorrespondencia = "pendente" | "confirmado" | "rejeitado" | "analisar_depois";
 
 export type StatusAnalise =
-  | "pendente"
-  | "sem_correspondencia"
-  | "ja_pago"
-  | "confirmado"
-  | "rejeitado"
-  | "analisar_depois";
+  "pendente" | "sem_correspondencia" | "ja_pago" | "confirmado" | "rejeitado" | "analisar_depois";
 
 export interface Cliente {
   id: string;
@@ -69,6 +64,9 @@ export interface ClienteImportado {
   cliente_vinculado_id: string | null;
   status_analise: StatusAnalise;
   created_at: string;
+  cpf_original: string | null;
+  valor_original: number | null;
+  data_original: string | null;
 }
 
 export interface Correspondencia {

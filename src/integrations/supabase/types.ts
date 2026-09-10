@@ -62,30 +62,39 @@ export type Database = {
       clientes_importados: {
         Row: {
           cliente_vinculado_id: string | null
+          cpf_original: string | null
           created_at: string
+          data_original: string | null
           id: string
           importacao_id: string
           nome_normalizado: string
           nome_original: string
           status_analise: string
+          valor_original: number | null
         }
         Insert: {
           cliente_vinculado_id?: string | null
+          cpf_original?: string | null
           created_at?: string
+          data_original?: string | null
           id?: string
           importacao_id: string
           nome_normalizado: string
           nome_original: string
           status_analise?: string
+          valor_original?: number | null
         }
         Update: {
           cliente_vinculado_id?: string | null
+          cpf_original?: string | null
           created_at?: string
+          data_original?: string | null
           id?: string
           importacao_id?: string
           nome_normalizado?: string
           nome_original?: string
           status_analise?: string
+          valor_original?: number | null
         }
         Relationships: [
           {

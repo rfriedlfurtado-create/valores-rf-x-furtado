@@ -18,6 +18,6 @@
 - [x] Head metadata por rota
 
 ## Futuro
-- Mapear mais colunas na importação
+- [x] Mapear mais colunas na importação (CPF, valor, data) — CPF exato tem prioridade máxima na correspondência
 - Importação de Word
 - Multiusuário / permissões

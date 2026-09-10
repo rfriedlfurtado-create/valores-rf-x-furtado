@@ -36,6 +36,16 @@ export const LIMIARES_PADRAO: LimiaresSimilaridade = {
 const PARTICULAS = new Set(["de", "da", "do", "das", "dos", "e", "di", "du", "del", "la"]);
 
 /**
+ * Normaliza um CPF para apenas dígitos, para comparação exata.
+ * Retorna null se não sobrarem 11 dígitos (evita falso-positivo com lixo de planilha).
+ */
+export function normalizarCPF(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const digitos = valor.replace(/\D/g, "");
+  return digitos.length === 11 ? digitos : null;
+}
+
+/**
  * Normaliza um nome: minúsculas, sem acentos, sem pontuação,
  * sem caracteres especiais e sem espaços duplicados.
  * O nome original NUNCA é alterado — apenas a chave de comparação.
@@ -179,8 +189,7 @@ export function compararNomes(
   const jw = jaroWinkler(nomeNormalizadoA, nomeNormalizadoB);
   const tokens = tokenSimilarity(nomeNormalizadoA, nomeNormalizadoB);
 
-  const bruto =
-    nomeNormalizadoA === nomeNormalizadoB ? 1 : lev * 0.3 + jw * 0.25 + tokens * 0.45;
+  const bruto = nomeNormalizadoA === nomeNormalizadoB ? 1 : lev * 0.3 + jw * 0.25 + tokens * 0.45;
 
   const percentual = Math.round(Math.min(1, Math.max(0, bruto)) * 10000) / 100;
 
