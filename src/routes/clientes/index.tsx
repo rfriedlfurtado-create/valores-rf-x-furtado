@@ -1,16 +1,30 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
+import { DialogImportadorClientes } from "@/components/DialogImportadorClientes";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
 import { formatDate } from "@/lib/format";
 import { normalizarNome } from "@/lib/similarity";
@@ -22,7 +36,8 @@ export const Route = createFileRoute("/clientes/")({
       { title: "Clientes — Base de Pagamentos" },
       {
         name: "description",
-        content: "Base completa de clientes cadastrados com total recebido e histórico de pagamentos.",
+        content:
+          "Base completa de clientes cadastrados com total recebido e histórico de pagamentos.",
       },
       { property: "og:title", content: "Clientes — Base de Pagamentos" },
       { property: "og:description", content: "Base completa de clientes com valores recebidos." },
@@ -74,7 +89,8 @@ function Clientes() {
       valor_desc: (a, b) => b.totalRecebido - a.totalRecebido,
       valor_asc: (a, b) => a.totalRecebido - b.totalRecebido,
       pagamento_recente: (a, b) => (b.ultimoPagamento ?? "").localeCompare(a.ultimoPagamento ?? ""),
-      pagamento_antigo: (a, b) => (a.primeiroPagamento ?? "z").localeCompare(b.primeiroPagamento ?? "z"),
+      pagamento_antigo: (a, b) =>
+        (a.primeiroPagamento ?? "z").localeCompare(b.primeiroPagamento ?? "z"),
     };
 
     return [...resultado].sort(ordenadores[ordenacao]);
@@ -91,7 +107,10 @@ function Clientes() {
 
   return (
     <div>
-      <PageHeader titulo="Clientes" descricao={`${base.clientes.length} clientes na base histórica.`}>
+      <PageHeader
+        titulo="Clientes"
+        descricao={`${base.clientes.length} clientes na base histórica.`}
+      >
         <DialogPagamento
           clientes={base.clientes}
           trigger={
@@ -101,9 +120,14 @@ function Clientes() {
             </Button>
           }
         />
-        <Button asChild>
-          <Link to="/importar">Adicionar clientes</Link>
-        </Button>
+        <DialogImportadorClientes
+          trigger={
+            <Button>
+              <Upload className="size-4" aria-hidden />
+              Importar Clientes
+            </Button>
+          }
+        />
       </PageHeader>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
@@ -118,7 +142,9 @@ function Clientes() {
           />
         </div>
         <Select value={pagamento} onValueChange={setPagamento}>
-          <SelectTrigger className="h-12 lg:w-52"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-12 lg:w-52">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos</SelectItem>
             <SelectItem value="com">Possui pagamento</SelectItem>
@@ -126,7 +152,9 @@ function Clientes() {
           </SelectContent>
         </Select>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-12 lg:w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-12 lg:w-44">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="ativos">Ativos</SelectItem>
             <SelectItem value="arquivados">Arquivados</SelectItem>
@@ -134,7 +162,9 @@ function Clientes() {
           </SelectContent>
         </Select>
         <Select value={ordenacao} onValueChange={(valor) => setOrdenacao(valor as Ordenacao)}>
-          <SelectTrigger className="h-12 lg:w-56"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-12 lg:w-56">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="nome">Nome (A-Z)</SelectItem>
             <SelectItem value="valor_desc">Maior valor recebido</SelectItem>
@@ -174,12 +204,28 @@ function Clientes() {
                   <TableCell className="text-center tabular font-semibold">
                     {cliente.quantidadePagamentos}
                   </TableCell>
-                  <TableCell className="tabular text-sm">{formatDate(cliente.ultimoPagamento)}</TableCell>
-                  <TableCell className="tabular text-sm">{formatDate(cliente.created_at)}</TableCell>
+                  <TableCell className="tabular text-sm">
+                    {formatDate(cliente.ultimoPagamento)}
+                  </TableCell>
+                  <TableCell className="tabular text-sm">
+                    {formatDate(cliente.created_at)}
+                  </TableCell>
                   <TableCell>
                     <BadgeStatus
-                      texto={cliente.arquivado ? "Arquivado" : cliente.quantidadePagamentos > 0 ? "Já pago" : "Ativo"}
-                      tom={cliente.arquivado ? "neutro" : cliente.quantidadePagamentos > 0 ? "sucesso" : "neutro"}
+                      texto={
+                        cliente.arquivado
+                          ? "Arquivado"
+                          : cliente.quantidadePagamentos > 0
+                            ? "Já pago"
+                            : "Ativo"
+                      }
+                      tom={
+                        cliente.arquivado
+                          ? "neutro"
+                          : cliente.quantidadePagamentos > 0
+                            ? "sucesso"
+                            : "neutro"
+                      }
                     />
                   </TableCell>
                   <TableCell className="text-right">

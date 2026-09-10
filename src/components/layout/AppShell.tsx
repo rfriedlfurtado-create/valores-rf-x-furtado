@@ -7,7 +7,6 @@ import {
   Menu,
   Receipt,
   Settings,
-  Upload,
   Users,
   Wallet,
 } from "lucide-react";
@@ -26,7 +25,6 @@ interface ItemMenu {
 const ITENS_MENU: ItemMenu[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/clientes", label: "Clientes", icon: Users },
-  { to: "/importar", label: "Importar clientes", icon: Upload },
   { to: "/ja-pagos", label: "Já pagos", icon: Wallet },
   { to: "/pagamentos", label: "Histórico de pagamentos", icon: Receipt },
   { to: "/analise", label: "Análise de nomes", icon: FileSearch },
@@ -142,7 +140,11 @@ export function PageHeader({
   );
 }
 
-export function SecaoVazia({ titulo, descricao, ...rest }: ComponentProps<"div"> & {
+export function SecaoVazia({
+  titulo,
+  descricao,
+  ...rest
+}: ComponentProps<"div"> & {
   titulo: string;
   descricao?: string;
 }) {
