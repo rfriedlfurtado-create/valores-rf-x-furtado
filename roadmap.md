@@ -19,5 +19,7 @@
 
 ## Futuro
 - [x] Mapear mais colunas na importação (CPF, valor, data) — CPF exato tem prioridade máxima na correspondência
+- [x] Importação de arquivos Word (.docx) — heurística de texto livre, com prévia antes de confirmar
+- [x] Botão para baixar planilha-modelo de importação
 - Importação de Word
 - Multiusuário / permissões

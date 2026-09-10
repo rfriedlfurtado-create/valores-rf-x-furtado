@@ -3,13 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   FileSpreadsheet,
+  FileText,
   ListChecks,
   Upload,
   Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
 import { PageHeader } from "@/components/layout/AppShell";
@@ -90,6 +93,71 @@ function parseDataCell(valor: unknown): string | null {
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
   return null;
+}
+
+/** Extrai os parágrafos não-vazios de um .docx como texto puro. */
+async function lerDocx(arquivo: File): Promise<string[]> {
+  const buffer = await arquivo.arrayBuffer();
+  const resultado = await mammoth.extractRawText({ arrayBuffer: buffer });
+  return resultado.value
+    .split("\n")
+    .map((linha) => linha.trim())
+    .filter((linha) => linha.length > 0);
+}
+
+/**
+ * Interpreta uma linha de texto livre (sem colunas definidas) tentando
+ * reconhecer CPF, valor em reais e data no meio do texto, sobrando o
+ * nome. Heurística — menos confiável que planilha, por isso o usuário
+ * sempre revisa a prévia antes de importar.
+ */
+function interpretarLinhaLivre(linhaOriginal: string): LinhaImportacao {
+  let sobra = linhaOriginal;
+
+  let cpf: string | null = null;
+  const matchCpf = sobra.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
+  if (matchCpf?.[1]) {
+    cpf = matchCpf[1];
+    sobra = sobra.replace(matchCpf[0], " ");
+  }
+
+  let data: string | null = null;
+  const matchData = sobra.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b/);
+  if (matchData?.[1]) {
+    data = parseDataCell(matchData[1]);
+    sobra = sobra.replace(matchData[0], " ");
+  }
+
+  let valor: number | null = null;
+  const matchValor =
+    sobra.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i) ??
+    sobra.match(/\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/);
+  if (matchValor?.[1]) {
+    valor = parseBRL(matchValor[1]) || null;
+    sobra = sobra.replace(matchValor[0], " ");
+  }
+
+  const nome = sobra
+    .replace(/\bCPF\b:?/gi, " ")
+    .replace(/[-–—:;|]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return { nome, cpf, valor, data };
+}
+
+/** Gera e baixa uma planilha-modelo (.xlsx) com as colunas aceitas na importação. */
+function gerarModelo() {
+  const linhas = [
+    ["Nome", "CPF", "Valor", "Data"],
+    ["CARLOS ALBERTO SOUZA", "123.456.789-00", 1500.0, "10/03/2026"],
+    ["MARIA DA SILVA", "", "", ""],
+  ];
+  const planilha = XLSX.utils.aoa_to_sheet(linhas);
+  planilha["!cols"] = [{ wch: 32 }, { wch: 18 }, { wch: 14 }, { wch: 14 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, planilha, "Clientes");
+  XLSX.writeFile(workbook, "modelo-importacao-clientes.xlsx");
 }
 
 interface PlanilhaLida {
@@ -255,6 +323,48 @@ function MapeamentoColunas({
   );
 }
 
+function PreviaDocx({ registros }: { registros: LinhaImportacao[] }) {
+  return (
+    <Card className="gap-4 p-5">
+      <div>
+        <p className="text-sm font-semibold text-foreground">Prévia do que foi reconhecido</p>
+        <p className="text-xs text-muted-foreground">
+          Word é texto livre, então essa leitura é uma estimativa — confira antes de importar. Se
+          algo saiu errado, corrija colando o texto na caixa de colagem manual ao lado.
+        </p>
+      </div>
+      <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead>CPF</TableHead>
+              <TableHead className="text-right">Valor</TableHead>
+              <TableHead>Data</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {registros.map((registro, indice) => (
+              <TableRow key={indice}>
+                <TableCell className="text-sm">{registro.nome}</TableCell>
+                <TableCell className="tabular text-sm text-muted-foreground">
+                  {registro.cpf ?? "—"}
+                </TableCell>
+                <TableCell className="text-right tabular text-sm text-muted-foreground">
+                  {registro.valor != null ? registro.valor.toFixed(2) : "—"}
+                </TableCell>
+                <TableCell className="tabular text-sm text-muted-foreground">
+                  {registro.data ?? "—"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
+  );
+}
+
 function Importar() {
   const { base, variacoes, rejeicoes, limiares, carregando } = useSistema();
   const queryClient = useQueryClient();
@@ -265,8 +375,11 @@ function Importar() {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [planilha, setPlanilha] = useState<PlanilhaLida | null>(null);
   const [mapeamento, setMapeamento] = useState<CampoMapeado[]>([]);
+  const [registrosDocx, setRegistrosDocx] = useState<LinhaImportacao[] | null>(null);
   const [lendoArquivo, setLendoArquivo] = useState(false);
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+
+  const ehDocx = !!arquivo && /\.docx$/i.test(arquivo.name);
 
   const registrosManuais = useMemo<LinhaImportacao[]>(
     () =>
@@ -308,29 +421,45 @@ function Importar() {
   }, [planilha, mapeamento, indiceColunaNome]);
 
   const origem: "arquivo" | "manual" = arquivo ? "arquivo" : "manual";
-  const registrosParaImportar = arquivo ? registrosDoArquivo : registrosManuais;
+  const registrosParaImportar = ehDocx
+    ? (registrosDocx ?? [])
+    : arquivo
+      ? registrosDoArquivo
+      : registrosManuais;
 
   async function aoSelecionarArquivo(event: React.ChangeEvent<HTMLInputElement>) {
     const selecionado = event.target.files?.[0] ?? null;
     setArquivo(selecionado);
     setPlanilha(null);
     setMapeamento([]);
+    setRegistrosDocx(null);
     setResultado(null);
     if (!selecionado) return;
 
     setLendoArquivo(true);
     try {
-      const lida = await lerPlanilha(selecionado);
-      setPlanilha(lida);
-      setMapeamento(lida.cabecalhos.map((cabecalho) => adivinharCampo(cabecalho)));
-      if (lida.linhas.length === 0) {
-        toast.error("Não encontrei linhas com dados nesse arquivo.");
+      if (/\.docx$/i.test(selecionado.name)) {
+        const linhas = await lerDocx(selecionado);
+        const registros = linhas.map(interpretarLinhaLivre).filter((r) => r.nome.length > 0);
+        setRegistrosDocx(registros);
+        if (registros.length === 0) {
+          toast.error("Não encontrei nomes nesse documento.");
+        }
+      } else {
+        const lida = await lerPlanilha(selecionado);
+        setPlanilha(lida);
+        setMapeamento(lida.cabecalhos.map((cabecalho) => adivinharCampo(cabecalho)));
+        if (lida.linhas.length === 0) {
+          toast.error("Não encontrei linhas com dados nesse arquivo.");
+        }
       }
       if (!nomeImportacao) {
         setNomeImportacao(selecionado.name.replace(/\.[^.]+$/, ""));
       }
     } catch {
-      toast.error("Não consegui ler esse arquivo. Confirme se é um .xlsx, .xls ou .csv válido.");
+      toast.error(
+        "Não consegui ler esse arquivo. Confirme se é um .xlsx, .xls, .csv ou .docx válido.",
+      );
       setArquivo(null);
     } finally {
       setLendoArquivo(false);
@@ -341,6 +470,7 @@ function Importar() {
     setArquivo(null);
     setPlanilha(null);
     setMapeamento([]);
+    setRegistrosDocx(null);
     if (inputArquivoRef.current) inputArquivoRef.current.value = "";
   }
 
@@ -409,14 +539,19 @@ function Importar() {
     onError: (erro: Error) => toast.error(erro.message),
   });
 
-  const temColunaNomeMapeada = !arquivo || indiceColunaNome !== -1;
+  const temColunaNomeMapeada = ehDocx || !arquivo || indiceColunaNome !== -1;
 
   return (
     <div>
       <PageHeader
         titulo="Importar clientes"
-        descricao="Envie um arquivo (xlsx/csv) ou cole os nomes manualmente. Cada nome é comparado com toda a base histórica — nomes parecidos geram apenas um alerta, nunca uma união automática."
-      />
+        descricao="Envie um arquivo (xlsx/csv/docx) ou cole os nomes manualmente. Cada nome é comparado com toda a base histórica — nomes parecidos geram apenas um alerta, nunca uma união automática."
+      >
+        <Button variant="outline" size="sm" onClick={gerarModelo}>
+          <Download className="size-4" aria-hidden />
+          Baixar modelo de importação
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="gap-4 p-5">
@@ -425,21 +560,27 @@ function Importar() {
             <p className="text-sm font-semibold text-foreground">Importar por arquivo</p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Formatos aceitos: .xlsx, .xls ou .csv. Depois de enviar, você escolhe o que cada coluna
-            representa (nome, CPF, valor, data).
+            Formatos aceitos: .xlsx, .xls, .csv ou .docx. Planilhas permitem mapear as colunas; em
+            documentos Word, o sistema tenta reconhecer nome, CPF, valor e data no texto — revise a
+            prévia antes de importar.
           </p>
           <Input
             ref={inputArquivoRef}
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.xls,.csv,.docx"
             onChange={aoSelecionarArquivo}
           />
           {lendoArquivo ? <p className="text-xs text-muted-foreground">Lendo arquivo...</p> : null}
-          {arquivo && planilha ? (
+          {arquivo && (planilha || registrosDocx) ? (
             <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-              <span>
-                <strong className="tabular">{planilha.linhas.length}</strong> linha(s) em{" "}
-                {arquivo.name}
+              <span className="flex items-center gap-2">
+                {ehDocx ? (
+                  <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                ) : null}
+                <strong className="tabular">
+                  {ehDocx ? (registrosDocx?.length ?? 0) : (planilha?.linhas.length ?? 0)}
+                </strong>{" "}
+                {ehDocx ? "nome(s) reconhecido(s) em" : "linha(s) em"} {arquivo.name}
               </span>
               <Button variant="ghost" size="sm" onClick={limparArquivo}>
                 Remover
@@ -477,7 +618,13 @@ function Importar() {
         </Card>
       </div>
 
-      {arquivo && planilha && planilha.linhas.length > 0 ? (
+      {arquivo && ehDocx && registrosDocx && registrosDocx.length > 0 ? (
+        <div className="mt-5">
+          <PreviaDocx registros={registrosDocx} />
+        </div>
+      ) : null}
+
+      {arquivo && !ehDocx && planilha && planilha.linhas.length > 0 ? (
         <div className="mt-5">
           <MapeamentoColunas
             planilha={planilha}
