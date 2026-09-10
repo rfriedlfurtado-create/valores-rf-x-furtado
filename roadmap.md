@@ -11,10 +11,10 @@
 - [x] Importar clientes: arquivo (xlsx/csv) e colagem manual
 - [x] Motor de similaridade (normalização, Levenshtein, Jaro-Winkler, tokens)
 - [x] Seção Já Pagos + modal comparativo (confirmar / rejeitar / depois)
-- [ ] Análise de nomes por faixa de probabilidade
+- [x] Análise de nomes por faixa de probabilidade
 - [x] Histórico de pagamentos
 - [x] Histórico de importações + detalhe
-- [ ] Configurações (limiares de similaridade)
+- [x] Configurações (limiares de similaridade)
 - [x] Head metadata por rota
 
 ## Futuro

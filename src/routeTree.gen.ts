@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnaliseRouteImport } from './routes/analise'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as ImportacoesRouteImport } from './routes/importacoes'
 import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as JaPagosRouteImport } from './routes/ja-pagos'
@@ -20,6 +22,16 @@ import { Route as ClientesClienteIdRouteImport } from './routes/clientes/$client
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnaliseRoute = AnaliseRouteImport.update({
+  id: '/analise',
+  path: '/analise',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportacoesRoute = ImportacoesRouteImport.update({
@@ -55,6 +67,8 @@ const ClientesClienteIdRoute = ClientesClienteIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analise': typeof AnaliseRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
@@ -64,6 +78,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analise': typeof AnaliseRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
@@ -74,6 +90,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analise': typeof AnaliseRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
@@ -85,6 +103,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analise'
+    | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
@@ -94,6 +114,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analise'
+    | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
@@ -103,6 +125,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/analise'
+    | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
@@ -113,6 +137,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnaliseRoute: typeof AnaliseRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
   ImportacoesRoute: typeof ImportacoesRoute
   ImportarRoute: typeof ImportarRoute
   JaPagosRoute: typeof JaPagosRoute
@@ -128,6 +154,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analise': {
+      id: '/analise'
+      path: '/analise'
+      fullPath: '/analise'
+      preLoaderRoute: typeof AnaliseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/importacoes': {
@@ -177,6 +217,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnaliseRoute: AnaliseRoute,
+  ConfiguracoesRoute: ConfiguracoesRoute,
   ImportacoesRoute: ImportacoesRoute,
   ImportarRoute: ImportarRoute,
   JaPagosRoute: JaPagosRoute,
