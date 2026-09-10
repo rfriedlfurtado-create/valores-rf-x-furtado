@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ImportacoesRouteImport } from './routes/importacoes'
+import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as JaPagosRouteImport } from './routes/ja-pagos'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as ClientesIndexRouteImport } from './routes/clientes/index'
@@ -18,6 +20,16 @@ import { Route as ClientesClienteIdRouteImport } from './routes/clientes/$client
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportacoesRoute = ImportacoesRouteImport.update({
+  id: '/importacoes',
+  path: '/importacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportarRoute = ImportarRouteImport.update({
+  id: '/importar',
+  path: '/importar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JaPagosRoute = JaPagosRouteImport.update({
@@ -43,6 +55,8 @@ const ClientesClienteIdRoute = ClientesClienteIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/importacoes': typeof ImportacoesRoute
+  '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
@@ -50,6 +64,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/importacoes': typeof ImportacoesRoute
+  '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
@@ -58,6 +74,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/importacoes': typeof ImportacoesRoute
+  '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
@@ -66,12 +84,27 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/ja-pagos' | '/pagamentos' | '/clientes/$clienteId' | '/clientes/'
+    | '/'
+    | '/importacoes'
+    | '/importar'
+    | '/ja-pagos'
+    | '/pagamentos'
+    | '/clientes/$clienteId'
+    | '/clientes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ja-pagos' | '/pagamentos' | '/clientes/$clienteId' | '/clientes'
+  to:
+    | '/'
+    | '/importacoes'
+    | '/importar'
+    | '/ja-pagos'
+    | '/pagamentos'
+    | '/clientes/$clienteId'
+    | '/clientes'
   id:
     | '__root__'
     | '/'
+    | '/importacoes'
+    | '/importar'
     | '/ja-pagos'
     | '/pagamentos'
     | '/clientes/$clienteId'
@@ -80,6 +113,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ImportacoesRoute: typeof ImportacoesRoute
+  ImportarRoute: typeof ImportarRoute
   JaPagosRoute: typeof JaPagosRoute
   PagamentosRoute: typeof PagamentosRoute
   ClientesClienteIdRoute: typeof ClientesClienteIdRoute
@@ -93,6 +128,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/importacoes': {
+      id: '/importacoes'
+      path: '/importacoes'
+      fullPath: '/importacoes'
+      preLoaderRoute: typeof ImportacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/importar': {
+      id: '/importar'
+      path: '/importar'
+      fullPath: '/importar'
+      preLoaderRoute: typeof ImportarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ja-pagos': {
@@ -128,6 +177,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ImportacoesRoute: ImportacoesRoute,
+  ImportarRoute: ImportarRoute,
   JaPagosRoute: JaPagosRoute,
   PagamentosRoute: PagamentosRoute,
   ClientesClienteIdRoute: ClientesClienteIdRoute,
