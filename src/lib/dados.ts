@@ -41,7 +41,11 @@ export interface BaseAgregada {
 
 async function carregarBase(): Promise<BaseAgregada> {
   const [clientesRes, pagamentosRes] = await Promise.all([
-    supabase.from("clientes").select("*").order("nome", { ascending: true }),
+    supabase
+      .from("clientes")
+      .select("*")
+      .is("deleted_at", null)
+      .order("nome", { ascending: true }),
     supabase.from("pagamentos").select("*").order("data_pagamento", { ascending: false }),
   ]);
 
@@ -68,12 +72,16 @@ async function carregarBase(): Promise<BaseAgregada> {
     };
   });
 
+  // Totais apenas de clientes ativos (deleted_at IS NULL), não de arquivados.
+  const idsAtivos = new Set(comTotais.map((c) => c.id));
+  const pagamentosAtivos = pagamentos.filter((p) => idsAtivos.has(p.cliente_id));
+
   return {
     clientes: comTotais,
     porId: new Map(comTotais.map((c) => [c.id, c])),
     pagamentosPorCliente,
-    totalPago: pagamentos.reduce((soma, p) => soma + p.valor, 0),
-    totalPagamentos: pagamentos.length,
+    totalPago: pagamentosAtivos.reduce((soma, p) => soma + p.valor, 0),
+    totalPagamentos: pagamentosAtivos.length,
   };
 }
 
