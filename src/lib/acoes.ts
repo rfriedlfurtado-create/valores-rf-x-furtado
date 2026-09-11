@@ -413,6 +413,37 @@ export async function adiarCorrespondencia(correspondenciaId: string, clienteImp
   if (imp.error) erro(imp.error.message);
 }
 
+/**
+ * Zera o sistema: remove TODOS os dados de clientes, pagamentos, importações
+ * e correspondências, preservando apenas as configurações.
+ *
+ * Ordem respeitando FK constraints:
+ *   1. correspondencias
+ *   2. correspondencias_rejeitadas
+ *   3. clientes_importados
+ *   4. importacoes
+ *   5. pagamentos
+ *   6. variacoes_nome
+ *   7. clientes
+ */
+export async function zerarSistema(): Promise<void> {
+  const tabelas = [
+    "correspondencias",
+    "correspondencias_rejeitadas",
+    "clientes_importados",
+    "importacoes",
+    "pagamentos",
+    "variacoes_nome",
+    "clientes",
+  ] as const;
+
+  for (const tabela of tabelas) {
+    // neq com valor inexistente force-deletes all rows (Supabase exige filtro)
+    const { error } = await supabase.from(tabela).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) erro(`Erro ao limpar ${tabela}: ${error.message}`);
+  }
+}
+
 export async function salvarLimiares(limiares: LimiaresSimilaridade): Promise<void> {
   const { error } = await supabase
     .from("configuracoes")

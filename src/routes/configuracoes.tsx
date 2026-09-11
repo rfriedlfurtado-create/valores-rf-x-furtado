@@ -1,11 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Save, SlidersHorizontal } from "lucide-react";
+import { FlaskConical, Save, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { BadgeSimilaridade } from "@/components/BadgeSimilaridade";
 import { PageHeader } from "@/components/layout/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { useSistema } from "@/hooks/useSistema";
-import { salvarLimiares } from "@/lib/acoes";
+import { salvarLimiares, zerarSistema } from "@/lib/acoes";
 import { compararNomes, normalizarNome, type LimiaresSimilaridade } from "@/lib/similarity";
 
 export const Route = createFileRoute("/configuracoes")({
@@ -121,6 +132,83 @@ function Testador({ limiares }: { limiares: LimiaresSimilaridade }) {
   );
 }
 
+const PALAVRA_CONFIRMACAO = "ZERAR";
+
+function ZonaDePerigo() {
+  const queryClient = useQueryClient();
+  const [confirmacao, setConfirmacao] = useState("");
+  const [aberto, setAberto] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: zerarSistema,
+    onSuccess: async () => {
+      toast.success("Sistema zerado. Todos os dados de clientes foram removidos.");
+      setAberto(false);
+      setConfirmacao("");
+      await queryClient.invalidateQueries();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <Card className="gap-4 border-danger/30 p-5">
+      <div className="flex items-center gap-2">
+        <TriangleAlert className="size-4 text-danger" aria-hidden />
+        <p className="text-sm font-semibold text-danger">Zona de perigo</p>
+      </div>
+      <div className="grid gap-1">
+        <p className="text-sm font-medium text-foreground">Zerar sistema</p>
+        <p className="text-sm text-muted-foreground">
+          Remove permanentemente todos os clientes, pagamentos, importações e correspondências.
+          As configurações de similaridade são preservadas. Esta ação não pode ser desfeita.
+        </p>
+      </div>
+      <AlertDialog open={aberto} onOpenChange={(v) => { setAberto(v); if (!v) setConfirmacao(""); }}>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" className="w-fit border-danger/40 text-danger hover:bg-danger/10 hover:text-danger">
+            Zerar sistema
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Zerar sistema permanentemente?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>Todos os dados operacionais serão excluídos sem possibilidade de recuperação:</p>
+                <ul className="ml-4 list-disc space-y-1">
+                  <li>Todos os clientes cadastrados</li>
+                  <li>Todo o histórico de pagamentos</li>
+                  <li>Todas as importações e correspondências</li>
+                </ul>
+                <p className="font-medium text-foreground">
+                  Para confirmar, digite <span className="font-bold">{PALAVRA_CONFIRMACAO}</span> no campo abaixo:
+                </p>
+                <Input
+                  value={confirmacao}
+                  onChange={(e) => setConfirmacao(e.target.value.toUpperCase())}
+                  placeholder={PALAVRA_CONFIRMACAO}
+                  className="font-mono"
+                  autoComplete="off"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirmacao("")}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => mutation.mutate()}
+              disabled={confirmacao !== PALAVRA_CONFIRMACAO || mutation.isPending}
+              className="bg-danger text-danger-foreground hover:bg-danger/90"
+            >
+              {mutation.isPending ? "Zerando..." : "Zerar permanentemente"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
 function Configuracoes() {
   const { limiares, carregando } = useSistema();
   const queryClient = useQueryClient();
@@ -215,6 +303,10 @@ function Configuracoes() {
         </Card>
 
         <Testador limiares={rascunho} />
+      </div>
+
+      <div className="mt-8">
+        <ZonaDePerigo />
       </div>
     </div>
   );
