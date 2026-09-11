@@ -240,6 +240,8 @@ export async function importarPagamentos(params: {
     observacao: string | null;
     usuario_cadastro: string;
   }[] = [];
+  // Clientes identificados — marcados como pagos independentemente de valor/data.
+  const idsParaMarcar = new Set<string>();
 
   for (const registro of registros) {
     const cpfNormalizado = normalizarCPF(registro.cpf);
@@ -269,25 +271,22 @@ export async function importarPagamentos(params: {
       continue;
     }
 
-    const valor = registro.valor ?? null;
-    if (valor == null || !(valor > 0)) {
-      invalidos.push({ nome: registro.nome, motivo: "Valor ausente ou inválido." });
-      continue;
-    }
-    const data = registro.data ?? null;
-    if (!data) {
-      invalidos.push({ nome: registro.nome, motivo: "Data ausente ou inválida." });
-      continue;
-    }
+    // Cliente identificado → sempre marcado como pago.
+    idsParaMarcar.add(cliente.id);
 
-    paraInserir.push({
-      cliente_id: cliente.id,
-      valor,
-      data_pagamento: data,
-      tipo: params.tipo,
-      observacao: params.observacao?.trim() || null,
-      usuario_cadastro: params.usuarioCadastro?.trim() || "Sistema",
-    });
+    // Registro de pagamento só é criado quando valor e data estão presentes.
+    const valor = registro.valor ?? null;
+    const data = registro.data ?? null;
+    if (valor != null && valor > 0 && data) {
+      paraInserir.push({
+        cliente_id: cliente.id,
+        valor,
+        data_pagamento: data,
+        tipo: params.tipo,
+        observacao: params.observacao?.trim() || null,
+        usuario_cadastro: params.usuarioCadastro?.trim() || "Sistema",
+      });
+    }
   }
 
   if (paraInserir.length > 0) {
@@ -295,8 +294,7 @@ export async function importarPagamentos(params: {
     if (error) erro(error.message);
   }
 
-  // Marca cada cliente identificado como "pago" — move-o para a página Já Pagos.
-  const idsParaMarcar = [...new Set(paraInserir.map((p) => p.cliente_id))];
+  // Move todos os clientes identificados para Já Pagos.
   for (const id of idsParaMarcar) {
     await marcarComoPago(id);
   }
@@ -304,7 +302,7 @@ export async function importarPagamentos(params: {
   return {
     totalRegistros: registros.length,
     pagamentosRegistrados: paraInserir.length,
-    marcadosComoPagos: idsParaMarcar.length,
+    marcadosComoPagos: idsParaMarcar.size,
     naoEncontrados,
     invalidos,
   };
