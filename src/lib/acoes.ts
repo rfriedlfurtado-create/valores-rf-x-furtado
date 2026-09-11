@@ -77,6 +77,27 @@ export async function arquivarCliente(id: string): Promise<void> {
   if (error) erro(error.message);
 }
 
+/** Marca o cliente como já pago — ele sai da página Clientes e aparece em Já Pagos. */
+export async function marcarComoPago(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("clientes")
+    .update({ status: "pago" })
+    .eq("id", id);
+  if (error) erro(error.message);
+}
+
+/**
+ * Exclusão lógica (soft delete). O cliente desaparece de todas as listagens
+ * ativas mas o histórico financeiro é preservado.
+ */
+export async function excluirCliente(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("clientes")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) erro(error.message);
+}
+
 export async function reativarCliente(id: string): Promise<void> {
   const { error } = await supabase
     .from("clientes")
@@ -129,6 +150,7 @@ export interface RegistroPagamentoComProblema {
 export interface ResultadoImportacaoPagamentos {
   totalRegistros: number;
   pagamentosRegistrados: number;
+  marcadosComoPagos: number;
   naoEncontrados: RegistroPagamentoComProblema[];
   invalidos: RegistroPagamentoComProblema[];
 }
@@ -228,9 +250,16 @@ export async function importarPagamentos(params: {
     if (error) erro(error.message);
   }
 
+  // Marca cada cliente identificado como "pago" — move-o para a página Já Pagos.
+  const idsParaMarcar = [...new Set(paraInserir.map((p) => p.cliente_id))];
+  for (const id of idsParaMarcar) {
+    await marcarComoPago(id);
+  }
+
   return {
     totalRegistros: registros.length,
     pagamentosRegistrados: paraInserir.length,
+    marcadosComoPagos: idsParaMarcar.length,
     naoEncontrados,
     invalidos,
   };

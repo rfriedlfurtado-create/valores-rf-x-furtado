@@ -2,7 +2,7 @@
 
 import type { Classificacao } from "./similarity";
 
-export type StatusCliente = "ativo" | "inativo" | "arquivado";
+export type StatusCliente = "ativo" | "inativo" | "arquivado" | "pago";
 
 export type TipoPagamento = "pix" | "transferencia" | "dinheiro" | "cheque" | "boleto" | "outro";
 
@@ -21,6 +21,7 @@ export interface Cliente {
   origem_importacao: string | null;
   data_importacao: string | null;
   arquivado: boolean;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -42,7 +42,7 @@ function ResumoImportacaoPagamentos({ resultado }: { resultado: ResultadoImporta
   return (
     <Card className="gap-4 p-5">
       <p className="text-sm font-semibold text-foreground">Importação de pagamentos concluída</p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
           <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div>
@@ -56,7 +56,16 @@ function ResumoImportacaoPagamentos({ resultado }: { resultado: ResultadoImporta
             <p className="text-lg font-bold tabular leading-none">
               {resultado.pagamentosRegistrados}
             </p>
-            <p className="text-xs text-muted-foreground">Pagamentos processados com sucesso</p>
+            <p className="text-xs text-muted-foreground">Pagamentos registrados</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <CheckCircle2 className="size-4 shrink-0 text-green-600" aria-hidden />
+          <div>
+            <p className="text-lg font-bold tabular leading-none">
+              {resultado.marcadosComoPagos}
+            </p>
+            <p className="text-xs text-muted-foreground">Movidos para Já Pagos</p>
           </div>
         </div>
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
@@ -65,7 +74,7 @@ function ResumoImportacaoPagamentos({ resultado }: { resultado: ResultadoImporta
             <p className="text-lg font-bold tabular leading-none">
               {resultado.naoEncontrados.length + resultado.invalidos.length}
             </p>
-            <p className="text-xs text-muted-foreground">Registros não puderam ser identificados</p>
+            <p className="text-xs text-muted-foreground">Não identificados</p>
           </div>
         </div>
       </div>

@@ -1,12 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, Upload } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Search, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
-import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { DialogImportadorClientes } from "@/components/DialogImportadorClientes";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,6 +38,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
+import { excluirCliente } from "@/lib/acoes";
+import { CHAVES_PARA_INVALIDAR } from "@/lib/dados";
 import { formatDate } from "@/lib/format";
 import { normalizarNome } from "@/lib/similarity";
 import type { ClienteComTotais } from "@/lib/tipos";
@@ -37,23 +51,63 @@ export const Route = createFileRoute("/clientes/")({
       {
         name: "description",
         content:
-          "Base completa de clientes cadastrados com total recebido e histórico de pagamentos.",
+          "Clientes com processos em tramitação cadastrados no sistema.",
       },
       { property: "og:title", content: "Clientes — Base de Pagamentos" },
-      { property: "og:description", content: "Base completa de clientes com valores recebidos." },
+      { property: "og:description", content: "Clientes com processos em tramitação." },
     ],
   }),
   component: Clientes,
 });
 
-type Ordenacao = "nome" | "valor_desc" | "valor_asc" | "pagamento_recente" | "pagamento_antigo";
+type Ordenacao = "nome" | "valor_desc" | "valor_asc" | "pagamento_recente" | "pagamento_antigo" | "cadastro_recente";
+
+function BotaoExcluir({ cliente }: { cliente: ClienteComTotais }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => excluirCliente(cliente.id),
+    onSuccess: async () => {
+      toast.success(`${cliente.nome} removido do sistema.`);
+      for (const chave of CHAVES_PARA_INVALIDAR) {
+        await queryClient.invalidateQueries({ queryKey: chave });
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-danger" aria-label={`Excluir ${cliente.nome}`}>
+          <Trash2 className="size-4" aria-hidden />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir cliente?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <strong>{cliente.nome}</strong> será removido da listagem de processos em tramitação.
+            O histórico financeiro é preservado. Esta ação pode ser revertida entrando em contato com o suporte.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => mutation.mutate()}
+            className="bg-danger text-danger-foreground hover:bg-danger/90"
+          >
+            {mutation.isPending ? "Excluindo..." : "Excluir"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 function Clientes() {
   const { base, variacoes, carregando } = useSistema();
   const [busca, setBusca] = useState("");
-  const [pagamento, setPagamento] = useState("todos");
-  const [status, setStatus] = useState("ativos");
-  const [ordenacao, setOrdenacao] = useState<Ordenacao>("nome");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("cadastro_recente");
 
   const variacoesPorCliente = useMemo(() => {
     const mapa = new Map<string, string[]>();
@@ -65,15 +119,12 @@ function Clientes() {
     return mapa;
   }, [variacoes]);
 
+  // Apenas clientes em tramitação: não pagos e não excluídos
   const lista = useMemo(() => {
     if (!base) return [];
-    let resultado = base.clientes;
-
-    if (status === "ativos") resultado = resultado.filter((c) => !c.arquivado);
-    if (status === "arquivados") resultado = resultado.filter((c) => c.arquivado);
-
-    if (pagamento === "pagos") resultado = resultado.filter((c) => c.quantidadePagamentos > 0);
-    if (pagamento === "nao_identificados") resultado = resultado.filter((c) => c.quantidadePagamentos === 0);
+    let resultado = base.clientes.filter(
+      (c) => c.status !== "pago" && c.status !== "arquivado" && !c.deleted_at,
+    );
 
     const termo = normalizarNome(busca);
     if (termo) {
@@ -91,10 +142,11 @@ function Clientes() {
       pagamento_recente: (a, b) => (b.ultimoPagamento ?? "").localeCompare(a.ultimoPagamento ?? ""),
       pagamento_antigo: (a, b) =>
         (a.primeiroPagamento ?? "z").localeCompare(b.primeiroPagamento ?? "z"),
+      cadastro_recente: (a, b) => b.created_at.localeCompare(a.created_at),
     };
 
     return [...resultado].sort(ordenadores[ordenacao]);
-  }, [base, status, pagamento, busca, ordenacao, variacoesPorCliente]);
+  }, [base, busca, ordenacao, variacoesPorCliente]);
 
   if (carregando || !base) {
     return (
@@ -105,11 +157,15 @@ function Clientes() {
     );
   }
 
+  const totalEmTramitacao = base.clientes.filter(
+    (c) => c.status !== "pago" && c.status !== "arquivado" && !c.deleted_at,
+  ).length;
+
   return (
     <div>
       <PageHeader
         titulo="Clientes"
-        descricao={`${base.clientes.length} clientes na base histórica.`}
+        descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação.`}
       >
         <DialogPagamento
           clientes={base.clientes}
@@ -130,7 +186,7 @@ function Clientes() {
         />
       </PageHeader>
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -141,31 +197,12 @@ function Clientes() {
             aria-label="Pesquisar cliente"
           />
         </div>
-        <Select value={pagamento} onValueChange={setPagamento}>
-          <SelectTrigger className="h-12 lg:w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="pagos">Pagos</SelectItem>
-            <SelectItem value="nao_identificados">Não identificados como pagos</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-12 lg:w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ativos">Ativos</SelectItem>
-            <SelectItem value="arquivados">Arquivados</SelectItem>
-            <SelectItem value="todos">Todos</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={ordenacao} onValueChange={(valor) => setOrdenacao(valor as Ordenacao)}>
           <SelectTrigger className="h-12 lg:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="cadastro_recente">Cadastro mais recente</SelectItem>
             <SelectItem value="nome">Nome (A-Z)</SelectItem>
             <SelectItem value="valor_desc">Maior valor recebido</SelectItem>
             <SelectItem value="valor_asc">Menor valor recebido</SelectItem>
@@ -177,8 +214,12 @@ function Clientes() {
 
       {lista.length === 0 ? (
         <SecaoVazia
-          titulo="Nenhum cliente encontrado"
-          descricao="Ajuste a pesquisa ou importe uma listagem de clientes."
+          titulo="Nenhum cliente em tramitação"
+          descricao={
+            busca
+              ? "Nenhum resultado para a pesquisa atual."
+              : "Importe uma listagem de clientes para começar."
+          }
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -190,7 +231,6 @@ function Clientes() {
                 <TableHead className="text-center">Pagamentos</TableHead>
                 <TableHead>Último pagamento</TableHead>
                 <TableHead>Cadastro</TableHead>
-                <TableHead>Pagamento</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -211,29 +251,14 @@ function Clientes() {
                     {formatDate(cliente.created_at)}
                   </TableCell>
                   <TableCell>
-                    <BadgeStatus
-                      texto={
-                        cliente.arquivado
-                          ? "Arquivado"
-                          : cliente.quantidadePagamentos > 0
-                            ? "Pago"
-                            : "Não identificado"
-                      }
-                      tom={
-                        cliente.arquivado
-                          ? "neutro"
-                          : cliente.quantidadePagamentos > 0
-                            ? "sucesso"
-                            : "neutro"
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
-                        Ver perfil
-                      </Link>
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
+                          Ver perfil
+                        </Link>
+                      </Button>
+                      <BotaoExcluir cliente={cliente} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
