@@ -1,4 +1,4 @@
-import { FileSpreadsheet, PenLine } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, PenLine } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { FormularioClienteNovoManual } from "@/components/importador/FormularioClienteNovoManual";
@@ -25,17 +25,17 @@ export interface DialogImportadorClientesProps {
 type Modo = "arquivo" | "manual";
 
 /**
- * Coluna genérica do modal: um título e um seletor arquivo/manual. Cada
- * coluna guarda seu próprio `modo` (useState local), então as duas colunas
- * nunca compartilham estado — importar por arquivo dos dois lados ou
- * cadastrar manualmente só um dos dois funciona de forma independente.
+ * Seção de importação com alternância arquivo/manual.
+ * Layout compacto para uso em coluna única, sequencial.
  */
-function ColunaImportacao({
+function SecaoImportacao({
+  numero,
   titulo,
   descricao,
   conteudoArquivo,
   conteudoManual,
 }: {
+  numero: number;
   titulo: string;
   descricao: string;
   conteudoArquivo: ReactNode;
@@ -44,86 +44,103 @@ function ColunaImportacao({
   const [modo, setModo] = useState<Modo>("arquivo");
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">{titulo}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{descricao}</p>
+    <div className="grid gap-4">
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground"
+          aria-hidden
+        >
+          {numero}
+        </span>
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">{titulo}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{descricao}</p>
+        </div>
       </div>
 
-      <Tabs value={modo} onValueChange={(valor) => setModo(valor as Modo)}>
-        <TabsList className="w-full">
-          <TabsTrigger value="arquivo" className="flex-1 gap-1.5">
-            <FileSpreadsheet className="size-3.5" aria-hidden />
-            Importar por arquivo
-          </TabsTrigger>
-          <TabsTrigger value="manual" className="flex-1 gap-1.5">
-            <PenLine className="size-3.5" aria-hidden />
-            Adicionar manualmente
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="arquivo">{conteudoArquivo}</TabsContent>
-        <TabsContent value="manual">{conteudoManual}</TabsContent>
-      </Tabs>
+      <div className="pl-9">
+        <Tabs value={modo} onValueChange={(valor) => setModo(valor as Modo)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="arquivo" className="flex-1 gap-1.5">
+              <FileSpreadsheet className="size-3.5" aria-hidden />
+              Importar arquivo
+            </TabsTrigger>
+            <TabsTrigger value="manual" className="flex-1 gap-1.5">
+              <PenLine className="size-3.5" aria-hidden />
+              Inserir manualmente
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="arquivo">{conteudoArquivo}</TabsContent>
+          <TabsContent value="manual">{conteudoManual}</TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
 
 /**
- * Modal de importação de clientes, usado a partir da página Clientes.
+ * Modal de importação de clientes — único ponto de entrada para essa
+ * funcionalidade no sistema.
  *
- * Dividido em duas colunas totalmente independentes — Clientes Novos e
- * Clientes que Pagaram — cada uma com sua própria escolha entre importar
- * por arquivo ou cadastrar manualmente. As duas nunca compartilham estado:
- * importar um arquivo de um lado não interfere no outro, e cada lado tem
- * seu próprio loading, erro e mensagem de sucesso.
+ * Fluxo sequencial em coluna única:
+ *   1. Clientes com processos em tramitação → base principal
+ *   2. Clientes que já pagaram → lista de conferência
+ *   → "Processar e cruzar dados" fecha o modal; o cruzamento já ocorreu
+ *     automaticamente durante cada importação e pode ser conferido na
+ *     listagem de Clientes.
  *
- * Nenhuma lógica de importação é duplicada aqui — os dois lados reaproveitam
- * o mesmo motor de leitura de arquivo (`src/lib/leitorArquivo.ts`) e as
- * mesmas ações de escrita (`importarNomes`, `importarPagamentos`,
- * `registrarPagamento`) já usadas no restante do sistema.
+ * Nenhuma lógica de importação é duplicada aqui — as seções reaproveitam
+ * os mesmos componentes e ações (`importarNomes`, `importarPagamentos`,
+ * `registrarPagamento`) usados no restante do sistema.
  */
 export function DialogImportadorClientes({ trigger }: DialogImportadorClientesProps) {
   const [aberto, setAberto] = useState(false);
   const { base } = useSistema();
 
+  function processar() {
+    setAberto(false);
+  }
+
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Importar Clientes</DialogTitle>
           <DialogDescription>
-            Clientes Novos e Clientes que Pagaram são importados separadamente. As listagens são
-            atualizadas automaticamente assim que cada importação terminar.
+            Informe os clientes com processos em tramitação e, em seguida, os que já pagaram. O
+            sistema cruza os dados automaticamente e identifica as correspondências.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 md:grid-cols-2 md:divide-x md:divide-border">
-          <div className="md:pr-6">
-            <ColunaImportacao
-              titulo="Clientes Novos"
-              descricao="Nomes que ainda não estão na base — comparados automaticamente com o histórico."
-              conteudoArquivo={<ImportadorArquivoClientesNovos />}
-              conteudoManual={<FormularioClienteNovoManual />}
-            />
+        <div className="grid gap-6">
+          <SecaoImportacao
+            numero={1}
+            titulo="Clientes com processos em tramitação"
+            descricao="Base principal — cria ou atualiza os clientes com processos em andamento."
+            conteudoArquivo={<ImportadorArquivoClientesNovos />}
+            conteudoManual={<FormularioClienteNovoManual />}
+          />
+
+          <Separator />
+
+          <SecaoImportacao
+            numero={2}
+            titulo="Clientes que já pagaram"
+            descricao="Lista de conferência — os nomes são cruzados com a base para identificar pagamentos."
+            conteudoArquivo={<ImportadorArquivoPagamentos />}
+            conteudoManual={<FormularioPagamentoManual clientes={base?.clientes ?? []} />}
+          />
+
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button variant="outline" onClick={() => setAberto(false)}>
+              Fechar
+            </Button>
+            <Button onClick={processar}>
+              <CheckCircle2 className="size-4" aria-hidden />
+              Processar e cruzar dados
+            </Button>
           </div>
-
-          <Separator className="md:hidden" />
-
-          <div className="md:pl-0">
-            <ColunaImportacao
-              titulo="Clientes que Pagaram"
-              descricao="Pagamentos de clientes já existentes na base — nenhum cliente novo é criado aqui."
-              conteudoArquivo={<ImportadorArquivoPagamentos />}
-              conteudoManual={<FormularioPagamentoManual clientes={base?.clientes ?? []} />}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end border-t border-border pt-4">
-          <Button variant="outline" onClick={() => setAberto(false)}>
-            Fechar
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

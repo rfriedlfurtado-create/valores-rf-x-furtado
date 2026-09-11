@@ -72,8 +72,8 @@ function Clientes() {
     if (status === "ativos") resultado = resultado.filter((c) => !c.arquivado);
     if (status === "arquivados") resultado = resultado.filter((c) => c.arquivado);
 
-    if (pagamento === "com") resultado = resultado.filter((c) => c.quantidadePagamentos > 0);
-    if (pagamento === "sem") resultado = resultado.filter((c) => c.quantidadePagamentos === 0);
+    if (pagamento === "pagos") resultado = resultado.filter((c) => c.quantidadePagamentos > 0);
+    if (pagamento === "nao_identificados") resultado = resultado.filter((c) => c.quantidadePagamentos === 0);
 
     const termo = normalizarNome(busca);
     if (termo) {
@@ -147,8 +147,8 @@ function Clientes() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="com">Possui pagamento</SelectItem>
-            <SelectItem value="sem">Não possui pagamento</SelectItem>
+            <SelectItem value="pagos">Pagos</SelectItem>
+            <SelectItem value="nao_identificados">Não identificados como pagos</SelectItem>
           </SelectContent>
         </Select>
         <Select value={status} onValueChange={setStatus}>
@@ -190,7 +190,7 @@ function Clientes() {
                 <TableHead className="text-center">Pagamentos</TableHead>
                 <TableHead>Último pagamento</TableHead>
                 <TableHead>Cadastro</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Pagamento</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -216,8 +216,8 @@ function Clientes() {
                         cliente.arquivado
                           ? "Arquivado"
                           : cliente.quantidadePagamentos > 0
-                            ? "Já pago"
-                            : "Ativo"
+                            ? "Pago"
+                            : "Não identificado"
                       }
                       tom={
                         cliente.arquivado

@@ -87,9 +87,6 @@ function Dashboard() {
         <Button asChild variant="outline">
           <Link to="/clientes">Ver clientes</Link>
         </Button>
-        <Button asChild>
-          <Link to="/importar">Importar clientes</Link>
-        </Button>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
