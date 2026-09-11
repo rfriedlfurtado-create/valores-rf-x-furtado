@@ -83,11 +83,7 @@ function Dashboard() {
       <PageHeader
         titulo="Dashboard"
         descricao="Panorama da base histórica e das correspondências encontradas."
-      >
-        <Button asChild variant="outline">
-          <Link to="/clientes">Ver clientes</Link>
-        </Button>
-      </PageHeader>
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard titulo="Total de clientes" valor={base.clientes.length} icone={Users} />
