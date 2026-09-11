@@ -12,173 +12,36 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import * as mammoth from "mammoth";
-import * as XLSX from "xlsx";
 
+import { MapeamentoColunas } from "@/components/importador/MapeamentoColunas";
+import { PreviaRegistros } from "@/components/importador/PreviaRegistros";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useSistema } from "@/hooks/useSistema";
 import { importarNomes, type LinhaImportacao, type ResultadoImportacao } from "@/lib/acoes";
 import { parseBRL, todayISO } from "@/lib/format";
+import {
+  adivinharCampoBase,
+  gerarModelo,
+  interpretarLinhaLivre,
+  lerDocx,
+  lerPlanilha,
+  parseDataCell,
+  relerComCabecalho,
+  ROTULO_CAMPO_BASE,
+  type CampoBase,
+  type PlanilhaLida,
+} from "@/lib/leitorArquivo";
 
-type CampoMapeado = "nome" | "cpf" | "valor" | "data" | "ignorar";
+type CampoMapeado = CampoBase;
+const ROTULO_CAMPO = ROTULO_CAMPO_BASE;
+const CAMPOS_MAPEAVEIS: readonly CampoMapeado[] = ["nome", "cpf", "valor", "data", "ignorar"];
+const adivinharCampo = adivinharCampoBase;
 
-const ROTULO_CAMPO: Record<CampoMapeado, string> = {
-  nome: "Nome",
-  cpf: "CPF",
-  valor: "Valor",
-  data: "Data",
-  ignorar: "Ignorar",
-};
-
-function adivinharCampo(cabecalho: string): CampoMapeado {
-  const h = cabecalho.toLowerCase();
-  if (/nome|cliente|parte|autor/.test(h)) return "nome";
-  if (/cpf/.test(h)) return "cpf";
-  if (/valor|montante|quantia|r\$/.test(h)) return "valor";
-  if (/data/.test(h)) return "data";
-  return "ignorar";
-}
-
-/** Converte uma célula de data (Date do xlsx, serial ou texto) para YYYY-MM-DD. */
-function parseDataCell(valor: unknown): string | null {
-  if (valor == null || valor === "") return null;
-  if (valor instanceof Date) {
-    if (Number.isNaN(valor.getTime())) return null;
-    return valor.toISOString().slice(0, 10);
-  }
-  const texto = String(valor).trim();
-  const br = texto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (br && br[1] && br[2] && br[3]) {
-    return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
-  return null;
-}
-
-/** Extrai os parágrafos não-vazios de um .docx como texto puro. */
-async function lerDocx(arquivo: File): Promise<string[]> {
-  const buffer = await arquivo.arrayBuffer();
-  const resultado = await mammoth.extractRawText({ arrayBuffer: buffer });
-  return resultado.value
-    .split("\n")
-    .map((linha) => linha.trim())
-    .filter((linha) => linha.length > 0);
-}
-
-/**
- * Interpreta uma linha de texto livre (sem colunas definidas) tentando
- * reconhecer CPF, valor em reais e data no meio do texto, sobrando o
- * nome. Heurística — menos confiável que planilha, por isso o usuário
- * sempre revisa a prévia antes de importar.
- */
-function interpretarLinhaLivre(linhaOriginal: string): LinhaImportacao {
-  let sobra = linhaOriginal;
-
-  let cpf: string | null = null;
-  const matchCpf = sobra.match(/\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/);
-  if (matchCpf?.[1]) {
-    cpf = matchCpf[1];
-    sobra = sobra.replace(matchCpf[0], " ");
-  }
-
-  let data: string | null = null;
-  const matchData = sobra.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b/);
-  if (matchData?.[1]) {
-    data = parseDataCell(matchData[1]);
-    sobra = sobra.replace(matchData[0], " ");
-  }
-
-  let valor: number | null = null;
-  const matchValor =
-    sobra.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i) ??
-    sobra.match(/\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/);
-  if (matchValor?.[1]) {
-    valor = parseBRL(matchValor[1]) || null;
-    sobra = sobra.replace(matchValor[0], " ");
-  }
-
-  const nome = sobra
-    .replace(/\bCPF\b:?/gi, " ")
-    .replace(/[-–—:;|]+/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  return { nome, cpf, valor, data };
-}
-
-/** Gera e baixa uma planilha-modelo (.xlsx) com as colunas aceitas na importação. */
-function gerarModelo() {
-  const linhas = [
-    ["Nome", "CPF", "Valor", "Data"],
-    ["CARLOS ALBERTO SOUZA", "123.456.789-00", 1500.0, "10/03/2026"],
-    ["MARIA DA SILVA", "", "", ""],
-  ];
-  const planilha = XLSX.utils.aoa_to_sheet(linhas);
-  planilha["!cols"] = [{ wch: 32 }, { wch: 18 }, { wch: 14 }, { wch: 14 }];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, planilha, "Clientes");
-  XLSX.writeFile(workbook, "modelo-importacao-clientes.xlsx");
-}
-
-interface PlanilhaLida {
-  cabecalhos: string[];
-  linhas: unknown[][];
-  temCabecalho: boolean;
-}
-
-/** Lê a planilha inteira (todas as colunas), sem aplicar mapeamento ainda. */
-async function lerPlanilha(arquivo: File): Promise<PlanilhaLida> {
-  const buffer = await arquivo.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  const planilha = workbook.Sheets[workbook.SheetNames[0]!];
-  if (!planilha) return { cabecalhos: [], linhas: [], temCabecalho: false };
-
-  const todasLinhas = XLSX.utils.sheet_to_json<unknown[]>(planilha, {
-    header: 1,
-    blankrows: false,
-  });
-  const linhasComConteudo = todasLinhas.filter(
-    (linha) => Array.isArray(linha) && linha.some((c) => c != null && String(c).trim() !== ""),
-  );
-  if (linhasComConteudo.length === 0) return { cabecalhos: [], linhas: [], temCabecalho: false };
-
-  const numColunas = Math.max(...linhasComConteudo.map((l) => l.length));
-  const primeira = linhasComConteudo[0]!;
-  const primeiraEhTexto = primeira.every((c) => c == null || typeof c !== "number");
-  const restoTemNumero = linhasComConteudo
-    .slice(1)
-    .some((l) => l.some((c) => typeof c === "number" || c instanceof Date));
-  const temCabecalho = primeiraEhTexto && restoTemNumero;
-
-  const cabecalhos = Array.from({ length: numColunas }, (_, i) =>
-    temCabecalho ? String(primeira[i] ?? `Coluna ${i + 1}`).trim() : `Coluna ${i + 1}`,
-  );
-  const linhas = temCabecalho ? linhasComConteudo.slice(1) : linhasComConteudo;
-
-  return { cabecalhos, linhas, temCabecalho };
-}
-
-function ResumoResultado({ resultado }: { resultado: ResultadoImportacao }) {
+export function ResumoResultado({ resultado }: { resultado: ResultadoImportacao }) {
   const itens = [
     { label: "Nomes importados", valor: resultado.totalNomes, icone: Users },
     { label: "Correspondências encontradas", valor: resultado.correspondencias, icone: ListChecks },
@@ -212,134 +75,6 @@ function ResumoResultado({ resultado }: { resultado: ResultadoImportacao }) {
         <Button asChild size="sm" variant="outline">
           <Link to="/importacoes">Ver histórico de importações</Link>
         </Button>
-      </div>
-    </Card>
-  );
-}
-
-function MapeamentoColunas({
-  planilha,
-  mapeamento,
-  onMudarCampo,
-  onMudarCabecalho,
-}: {
-  planilha: PlanilhaLida;
-  mapeamento: CampoMapeado[];
-  onMudarCampo: (indice: number, campo: CampoMapeado) => void;
-  onMudarCabecalho: (usa: boolean) => void;
-}) {
-  const preview = planilha.linhas.slice(0, 5);
-
-  return (
-    <Card className="gap-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">Mapear colunas</p>
-          <p className="text-xs text-muted-foreground">
-            Diga o que cada coluna representa. Uma coluna precisa ser "Nome".
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={planilha.temCabecalho}
-            onCheckedChange={onMudarCabecalho}
-            id="tem-cabecalho"
-          />
-          <Label htmlFor="tem-cabecalho" className="text-xs text-muted-foreground">
-            Primeira linha é cabeçalho
-          </Label>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {planilha.cabecalhos.map((cabecalho, indice) => (
-                <TableHead key={indice} className="min-w-40">
-                  <div className="space-y-1.5 py-1">
-                    <p className="truncate text-xs font-semibold text-foreground" title={cabecalho}>
-                      {cabecalho}
-                    </p>
-                    <Select
-                      value={mapeamento[indice] ?? "ignorar"}
-                      onValueChange={(valor) => onMudarCampo(indice, valor as CampoMapeado)}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(ROTULO_CAMPO) as CampoMapeado[]).map((campo) => (
-                          <SelectItem key={campo} value={campo}>
-                            {ROTULO_CAMPO[campo]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {preview.map((linha, indiceLinha) => (
-              <TableRow key={indiceLinha}>
-                {planilha.cabecalhos.map((_, indiceColuna) => (
-                  <TableCell key={indiceColuna} className="text-sm text-muted-foreground">
-                    {linha[indiceColuna] instanceof Date
-                      ? (linha[indiceColuna] as Date).toLocaleDateString("pt-BR")
-                      : String(linha[indiceColuna] ?? "—")}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Mostrando {preview.length} de {planilha.linhas.length} linha(s).
-      </p>
-    </Card>
-  );
-}
-
-function PreviaDocx({ registros }: { registros: LinhaImportacao[] }) {
-  return (
-    <Card className="gap-4 p-5">
-      <div>
-        <p className="text-sm font-semibold text-foreground">Prévia do que foi reconhecido</p>
-        <p className="text-xs text-muted-foreground">
-          Word é texto livre, então essa leitura é uma estimativa — confira antes de importar. Se
-          algo saiu errado, corrija colando o texto na caixa de colagem manual ao lado.
-        </p>
-      </div>
-      <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>CPF</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
-              <TableHead>Data</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {registros.map((registro, indice) => (
-              <TableRow key={indice}>
-                <TableCell className="text-sm">{registro.nome}</TableCell>
-                <TableCell className="tabular text-sm text-muted-foreground">
-                  {registro.cpf ?? "—"}
-                </TableCell>
-                <TableCell className="text-right tabular text-sm text-muted-foreground">
-                  {registro.valor != null ? registro.valor.toFixed(2) : "—"}
-                </TableCell>
-                <TableCell className="tabular text-sm text-muted-foreground">
-                  {registro.data ?? "—"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
       </div>
     </Card>
   );
@@ -474,23 +209,9 @@ export function ImportadorClientes({ onImportado }: ImportadorClientesProps) {
     if (!arquivo || !planilha) return;
     setLendoArquivo(true);
     try {
-      const buffer = await arquivo.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-      const folha = workbook.Sheets[workbook.SheetNames[0]!];
-      const todasLinhas = folha
-        ? XLSX.utils.sheet_to_json<unknown[]>(folha, { header: 1, blankrows: false })
-        : [];
-      const linhasComConteudo = todasLinhas.filter(
-        (linha) => Array.isArray(linha) && linha.some((c) => c != null && String(c).trim() !== ""),
-      );
-      const numColunas = Math.max(1, ...linhasComConteudo.map((l) => l.length));
-      const primeira = linhasComConteudo[0] ?? [];
-      const cabecalhos = Array.from({ length: numColunas }, (_, i) =>
-        usa ? String(primeira[i] ?? `Coluna ${i + 1}`).trim() : `Coluna ${i + 1}`,
-      );
-      const linhas = usa ? linhasComConteudo.slice(1) : linhasComConteudo;
-      setPlanilha({ cabecalhos, linhas, temCabecalho: usa });
-      setMapeamento(cabecalhos.map((c) => (usa ? adivinharCampo(c) : "ignorar")));
+      const relida = await relerComCabecalho(arquivo, usa);
+      setPlanilha(relida);
+      setMapeamento(relida.cabecalhos.map((c) => (usa ? adivinharCampo(c) : "ignorar")));
     } finally {
       setLendoArquivo(false);
     }
@@ -542,7 +263,17 @@ export function ImportadorClientes({ onImportado }: ImportadorClientesProps) {
           toda a base histórica — nomes parecidos geram apenas um alerta, nunca uma união
           automática.
         </p>
-        <Button variant="outline" size="sm" onClick={gerarModelo}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            gerarModelo("modelo-importacao-clientes.xlsx", [
+              ["Nome", "CPF", "Valor", "Data"],
+              ["CARLOS ALBERTO SOUZA", "123.456.789-00", 1500.0, "10/03/2026"],
+              ["MARIA DA SILVA", "", "", ""],
+            ])
+          }
+        >
           <Download className="size-4" aria-hidden />
           Baixar modelo de importação
         </Button>
@@ -615,7 +346,10 @@ export function ImportadorClientes({ onImportado }: ImportadorClientesProps) {
 
       {arquivo && ehDocx && registrosDocx && registrosDocx.length > 0 ? (
         <div className="mt-5">
-          <PreviaDocx registros={registrosDocx} />
+          <PreviaRegistros
+            registros={registrosDocx}
+            descricao="Word é texto livre, então essa leitura é uma estimativa — confira antes de importar. Se algo saiu errado, corrija colando o texto na caixa de colagem manual ao lado."
+          />
         </div>
       ) : null}
 
@@ -624,6 +358,9 @@ export function ImportadorClientes({ onImportado }: ImportadorClientesProps) {
           <MapeamentoColunas
             planilha={planilha}
             mapeamento={mapeamento}
+            campos={CAMPOS_MAPEAVEIS}
+            rotulos={ROTULO_CAMPO}
+            campoPadrao="ignorar"
             onMudarCampo={alterarMapeamento}
             onMudarCabecalho={alterarTemCabecalho}
           />

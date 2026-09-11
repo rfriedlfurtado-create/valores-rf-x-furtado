@@ -110,6 +110,132 @@ export async function registrarPagamento(entrada: NovoPagamento): Promise<void> 
   if (error) erro(error.message);
 }
 
+// ---------------------------------------------------------------------------
+// Importação em lote de pagamentos ("Clientes que Pagaram")
+// ---------------------------------------------------------------------------
+
+export interface LinhaPagamento {
+  nome: string;
+  cpf?: string | null;
+  valor?: number | null;
+  data?: string | null;
+}
+
+export interface RegistroPagamentoComProblema {
+  nome: string;
+  motivo: string;
+}
+
+export interface ResultadoImportacaoPagamentos {
+  totalRegistros: number;
+  pagamentosRegistrados: number;
+  naoEncontrados: RegistroPagamentoComProblema[];
+  invalidos: RegistroPagamentoComProblema[];
+}
+
+/**
+ * Importa uma lista de pagamentos em lote, associando cada linha a um
+ * cliente JÁ EXISTENTE na base (por CPF, com prioridade, ou por nome
+ * normalizado). Nunca cria clientes novos — isso pertence exclusivamente
+ * ao fluxo de "Clientes Novos" (`importarNomes`). Uma linha sem
+ * correspondência clara vira um registro "não encontrado", nunca um
+ * cadastro automático.
+ */
+export async function importarPagamentos(params: {
+  registros: LinhaPagamento[];
+  base: ClienteComTotais[];
+  tipo: TipoPagamento;
+  usuarioCadastro?: string | null;
+  observacao?: string | null;
+}): Promise<ResultadoImportacaoPagamentos> {
+  const registros = params.registros
+    .map((r) => ({ ...r, nome: r.nome.trim() }))
+    .filter((r) => r.nome.length > 0);
+  if (registros.length === 0) erro("Nenhum registro válido encontrado.");
+
+  const porCpf = new Map<string, ClienteComTotais>();
+  const porNome = new Map<string, ClienteComTotais[]>();
+  for (const cliente of params.base) {
+    const cpf = normalizarCPF(cliente.cpf);
+    if (cpf) porCpf.set(cpf, cliente);
+    const lista = porNome.get(cliente.nome_normalizado) ?? [];
+    lista.push(cliente);
+    porNome.set(cliente.nome_normalizado, lista);
+  }
+
+  const naoEncontrados: RegistroPagamentoComProblema[] = [];
+  const invalidos: RegistroPagamentoComProblema[] = [];
+  const paraInserir: {
+    cliente_id: string;
+    valor: number;
+    data_pagamento: string;
+    tipo: TipoPagamento;
+    observacao: string | null;
+    usuario_cadastro: string;
+  }[] = [];
+
+  for (const registro of registros) {
+    const cpfNormalizado = normalizarCPF(registro.cpf);
+    const nomeNormalizado = normalizarNome(registro.nome);
+
+    let cliente: ClienteComTotais | undefined;
+    if (cpfNormalizado && porCpf.has(cpfNormalizado)) {
+      cliente = porCpf.get(cpfNormalizado);
+    } else {
+      const candidatos = porNome.get(nomeNormalizado) ?? [];
+      if (candidatos.length === 1) {
+        cliente = candidatos[0];
+      } else if (candidatos.length > 1) {
+        naoEncontrados.push({
+          nome: registro.nome,
+          motivo: "Mais de um cliente com esse nome — informe o CPF para identificar qual.",
+        });
+        continue;
+      }
+    }
+
+    if (!cliente) {
+      naoEncontrados.push({
+        nome: registro.nome,
+        motivo: "Nenhum cliente correspondente encontrado na base de Clientes.",
+      });
+      continue;
+    }
+
+    const valor = registro.valor ?? null;
+    if (valor == null || !(valor > 0)) {
+      invalidos.push({ nome: registro.nome, motivo: "Valor ausente ou inválido." });
+      continue;
+    }
+    const data = registro.data ?? null;
+    if (!data) {
+      invalidos.push({ nome: registro.nome, motivo: "Data ausente ou inválida." });
+      continue;
+    }
+
+    paraInserir.push({
+      cliente_id: cliente.id,
+      valor,
+      data_pagamento: data,
+      tipo: params.tipo,
+      observacao: params.observacao?.trim() || null,
+      usuario_cadastro: params.usuarioCadastro?.trim() || "Sistema",
+    });
+  }
+
+  if (paraInserir.length > 0) {
+    const { error } = await supabase.from("pagamentos").insert(paraInserir);
+    if (error) erro(error.message);
+  }
+
+  return {
+    totalRegistros: registros.length,
+    pagamentosRegistrados: paraInserir.length,
+    naoEncontrados,
+    invalidos,
+  };
+}
+
 export async function adicionarVariacao(clienteId: string, nome: string): Promise<void> {
   const normalizado = normalizarNome(nome);
   if (!normalizado) return;
