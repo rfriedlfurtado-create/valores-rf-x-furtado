@@ -87,15 +87,60 @@ export async function marcarComoPago(id: string): Promise<void> {
 }
 
 /**
- * Exclusão lógica (soft delete). O cliente desaparece de todas as listagens
- * ativas mas o histórico financeiro é preservado.
+ * Exclusão definitiva (hard delete) com cascata completa.
+ *
+ * Remove, nesta ordem, todos os dados operacionais vinculados ao cliente:
+ *   1. Pagamentos
+ *   2. Variações de nome confirmadas
+ *   3. Correspondências onde o cliente foi identificado como já pago
+ *   4. Correspondências dos registros importados vinculados ao cliente
+ *   5. Registros importados vinculados ao cliente
+ *   6. O próprio cadastro do cliente
+ *
+ * Após a exclusão, nenhuma consulta, agregação, dashboard ou relatório
+ * continuará considerando o cliente — ele simplesmente deixa de existir.
  */
 export async function excluirCliente(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("clientes")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) erro(error.message);
+  // 1. Pagamentos do cliente
+  const pagamentos = await supabase.from("pagamentos").delete().eq("cliente_id", id);
+  if (pagamentos.error) erro(pagamentos.error.message);
+
+  // 2. Variações de nome
+  const variacoes = await supabase.from("variacoes_nome").delete().eq("cliente_id", id);
+  if (variacoes.error) erro(variacoes.error.message);
+
+  // 3. Correspondências onde este cliente foi o "encontrado" (já pago histórico)
+  const corrEncontrado = await supabase
+    .from("correspondencias")
+    .delete()
+    .eq("cliente_encontrado_id", id);
+  if (corrEncontrado.error) erro(corrEncontrado.error.message);
+
+  // 4 & 5. Registros importados vinculados + suas correspondências
+  const { data: importados, error: errImportados } = await supabase
+    .from("clientes_importados")
+    .select("id")
+    .eq("cliente_vinculado_id", id);
+  if (errImportados) erro(errImportados.message);
+
+  if (importados && importados.length > 0) {
+    const ids = (importados as { id: string }[]).map((r) => r.id);
+    const corrImportados = await supabase
+      .from("correspondencias")
+      .delete()
+      .in("cliente_importado_id", ids);
+    if (corrImportados.error) erro(corrImportados.error.message);
+
+    const delImportados = await supabase
+      .from("clientes_importados")
+      .delete()
+      .eq("cliente_vinculado_id", id);
+    if (delImportados.error) erro(delImportados.error.message);
+  }
+
+  // 6. O próprio cadastro
+  const cliente = await supabase.from("clientes").delete().eq("id", id);
+  if (cliente.error) erro(cliente.error.message);
 }
 
 export async function reativarCliente(id: string): Promise<void> {

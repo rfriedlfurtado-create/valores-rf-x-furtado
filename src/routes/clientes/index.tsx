@@ -1,24 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Trash2, Upload } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 
+import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogImportadorClientes } from "@/components/DialogImportadorClientes";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -38,8 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
-import { excluirCliente } from "@/lib/acoes";
-import { CHAVES_PARA_INVALIDAR } from "@/lib/dados";
 import { formatDate } from "@/lib/format";
 import { normalizarNome } from "@/lib/similarity";
 import type { ClienteComTotais } from "@/lib/tipos";
@@ -62,47 +48,6 @@ export const Route = createFileRoute("/clientes/")({
 
 type Ordenacao = "nome" | "valor_desc" | "valor_asc" | "pagamento_recente" | "pagamento_antigo" | "cadastro_recente";
 
-function BotaoExcluir({ cliente }: { cliente: ClienteComTotais }) {
-  const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () => excluirCliente(cliente.id),
-    onSuccess: async () => {
-      toast.success(`${cliente.nome} removido do sistema.`);
-      for (const chave of CHAVES_PARA_INVALIDAR) {
-        await queryClient.invalidateQueries({ queryKey: chave });
-      }
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-danger" aria-label={`Excluir ${cliente.nome}`}>
-          <Trash2 className="size-4" aria-hidden />
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Excluir cliente?</AlertDialogTitle>
-          <AlertDialogDescription>
-            <strong>{cliente.nome}</strong> será removido da listagem de processos em tramitação.
-            O histórico financeiro é preservado. Esta ação pode ser revertida entrando em contato com o suporte.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => mutation.mutate()}
-            className="bg-danger text-danger-foreground hover:bg-danger/90"
-          >
-            {mutation.isPending ? "Excluindo..." : "Excluir"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
 
 function Clientes() {
   const { base, variacoes, carregando } = useSistema();
@@ -257,7 +202,7 @@ function Clientes() {
                           Ver perfil
                         </Link>
                       </Button>
-                      <BotaoExcluir cliente={cliente} />
+                      <BotaoExcluirCliente cliente={cliente} />
                     </div>
                   </TableCell>
                 </TableRow>
