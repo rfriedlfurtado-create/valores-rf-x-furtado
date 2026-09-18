@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { Valor } from "@/components/Valor";
+import { Button } from "@/components/ui/button";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Input } from "@/components/ui/input";
 import {
@@ -51,6 +52,7 @@ type OrdenacaoJaPagos = "pago_recente" | "pago_antigo" | "valor_desc" | "valor_a
 
 function JaPagos() {
   const { base, carregando } = useSistema();
+  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<OrdenacaoJaPagos>("pago_recente");
 
@@ -142,7 +144,13 @@ function JaPagos() {
             </TableHeader>
             <TableBody>
               {lista.map((cliente) => (
-                <TableRow key={cliente.id}>
+                <TableRow
+                  key={cliente.id}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    navigate({ to: "/clientes/$clienteId", params: { clienteId: cliente.id } })
+                  }
+                >
                   <TableCell className="font-semibold">{cliente.nome}</TableCell>
                   <TableCell className="text-right">
                     <Valor valor={cliente.totalRecebido} tamanho="lg" />
@@ -157,7 +165,15 @@ function JaPagos() {
                     {formatDate(cliente.created_at)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end">
+                    <div
+                      className="flex items-center justify-end gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
+                          Ver perfil
+                        </Link>
+                      </Button>
                       <BotaoExcluirCliente cliente={cliente} />
                     </div>
                   </TableCell>
