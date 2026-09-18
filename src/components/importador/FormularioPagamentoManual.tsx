@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { registrarPagamento } from "@/lib/acoes";
+import { marcarComoPago, registrarPagamento } from "@/lib/acoes";
 import { parseBRL, todayISO } from "@/lib/format";
 import { TIPOS_PAGAMENTO, type ClienteComTotais, type TipoPagamento } from "@/lib/tipos";
 
@@ -46,19 +46,27 @@ export function FormularioPagamentoManual({
 
   const queryClient = useQueryClient();
 
+  // Só mostra clientes em tramitação — os já pagos ou arquivados não precisam ser movidos novamente.
+  const clientesEmTramitacao = clientes.filter(
+    (c) => c.status !== "pago" && c.status !== "arquivado" && !c.deleted_at,
+  );
+
   const mutation = useMutation({
-    mutationFn: () =>
-      registrarPagamento({
+    mutationFn: async () => {
+      await registrarPagamento({
         cliente_id: clienteId,
         valor: parseBRL(valor),
         data_pagamento: data,
         tipo,
         observacao,
         usuario_cadastro: usuario,
-      }),
+      });
+      // Move o cliente da lista de tramitação para Já Pagos.
+      await marcarComoPago(clienteId);
+    },
     onSuccess: async () => {
       const cliente = clientes.find((c) => c.id === clienteId);
-      toast.success(`Pagamento de ${cliente?.nome ?? "cliente"} registrado com sucesso.`);
+      toast.success(`${cliente?.nome ?? "Cliente"} registrado como Já Pago e movido para a página Já Pagos.`);
       await queryClient.invalidateQueries();
       setClienteId("");
       setValor("");
@@ -78,7 +86,7 @@ export function FormularioPagamentoManual({
             <SelectValue placeholder="Selecione o cliente que pagou" />
           </SelectTrigger>
           <SelectContent className="max-h-72">
-            {clientes.map((cliente) => (
+            {clientesEmTramitacao.map((cliente) => (
               <SelectItem key={cliente.id} value={cliente.id}>
                 {cliente.nome}
               </SelectItem>
