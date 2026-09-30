@@ -32,14 +32,16 @@ export function DialogImportadorClientes({ trigger }: DialogImportadorClientesPr
         <DialogHeader>
           <DialogTitle>Importar Clientes</DialogTitle>
         </DialogHeader>
-        <CardModeloDocumento />
+        <CardModeloDocumento onConcluido={() => setAberto(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
 /** Card único de importação, reaproveitado também na rota /importar. */
-export function CardModeloDocumento() {
+export function CardModeloDocumento({
+  onConcluido,
+}: { onConcluido?: (() => void) | undefined } = {}) {
   return (
     <div className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
       <div className="flex items-center gap-3">
@@ -48,7 +50,7 @@ export function CardModeloDocumento() {
           Importar pelo Modelo Documento (recomendado)
         </h3>
       </div>
-      <ImportadorModeloDocumento />
+      <ImportadorModeloDocumento onConcluido={onConcluido} />
     </div>
   );
 }

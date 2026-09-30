@@ -128,7 +128,28 @@ type Filtro = "problemas" | "todos";
  * Toda a regra de colunas vem de `@/lib/modeloDocumento` — a mesma usada
  * pelo gerador do botão "Modelo Documento".
  */
-export function ImportadorModeloDocumento() {
+export interface ImportadorModeloDocumentoProps {
+  /**
+   * Chamado somente quando a importação termina sem falhas de gravação,
+   * depois que as listagens já foram atualizadas. O modal usa para fechar.
+   */
+  onConcluido?: ((resultado: ResultadoImportacaoModelo) => void) | undefined;
+}
+
+/** Resumo curto do resultado, usado no aviso de sucesso. */
+function descreverResultado(res: ResultadoImportacaoModelo): string {
+  const partes = [
+    `${res.novosClientes} novo(s)`,
+    `${res.existentesAtualizados + res.semAlteracao} existente(s)`,
+    `${res.movidosParaJaPagos} movido(s) para Já Pagos`,
+  ];
+  if (res.naoEncontrados.length) partes.push(`${res.naoEncontrados.length} não encontrado(s)`);
+  if (res.naoImportadosPorErro.length)
+    partes.push(`${res.naoImportadosPorErro.length} não importado(s) por erro`);
+  return partes.join(" · ");
+}
+
+export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocumentoProps = {}) {
   const { base, variacoes } = useSistema();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +182,7 @@ export function ImportadorModeloDocumento() {
   async function aoSelecionar(file: File | undefined) {
     if (!file) return;
     setResultado(null);
+    mutation.reset();
     setArquivo(file);
     setLendo(true);
     try {
@@ -174,16 +196,29 @@ export function ImportadorModeloDocumento() {
     mutationFn: () =>
       executarPlanoModelo({ plano: plano!, nomeArquivo: arquivo?.name ?? "arquivo" }),
     onSuccess: async (res) => {
-      setResultado(res);
-      limpar();
-      for (const chave of CHAVES_PARA_INVALIDAR) {
-        await queryClient.invalidateQueries({ queryKey: chave });
+      // 1) Atualiza CLIENTES / JÁ PAGOS antes de qualquer outra coisa.
+      await Promise.all(
+        CHAVES_PARA_INVALIDAR.map((chave) => queryClient.invalidateQueries({ queryKey: chave })),
+      );
+
+      // 2) Falha de gravação → mantém aberto, com o resultado e os erros visíveis.
+      if (res.falhas.length > 0) {
+        setResultado(res);
+        limpar();
+        toast.error(`${res.falhas.length} registro(s) falharam ao gravar. Veja os detalhes.`);
+        return;
       }
-      if (res.falhas.length > 0)
-        toast.error(`${res.falhas.length} registro(s) falharam ao gravar.`);
-      else toast.success("Importação concluída.");
+
+      // 3) Sucesso → aviso e fechamento automático (quando usado dentro do modal).
+      toast.success("Importação concluída", {
+        description: descreverResultado(res),
+        duration: 8000,
+      });
+      limpar();
+      if (onConcluido) onConcluido(res);
+      else setResultado(res);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(`Falha na importação: ${err.message}`),
   });
 
   const ocupado = lendo || mutation.isPending;
@@ -231,6 +266,18 @@ export function ImportadorModeloDocumento() {
           {lendo ? "Analisando..." : "Selecionar arquivo"}
         </Button>
       </div>
+
+      {mutation.isError ? (
+        <Card className="gap-1 border-red-300 p-4 dark:border-red-900">
+          <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
+            <XCircle className="size-4" aria-hidden />A importação não foi concluída
+          </p>
+          <p className="text-xs">{mutation.error.message}</p>
+          <p className="text-xs text-muted-foreground">
+            Corrija o problema e tente novamente, ou selecione outro arquivo.
+          </p>
+        </Card>
+      ) : null}
 
       {analise && analise.errosEstrutura.length > 0 ? (
         <Card className="gap-2 border-red-300 p-4 dark:border-red-900">
@@ -354,8 +401,17 @@ function ResultadoModelo({ resultado }: { resultado: ResultadoImportacaoModelo }
   return (
     <Card className="gap-4 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold">
-        <CheckCircle2 className="size-4 text-green-600" aria-hidden />
-        Importação concluída
+        {resultado.falhas.length > 0 ? (
+          <>
+            <AlertTriangle className="size-4 text-red-600" aria-hidden />
+            Importação não concluída — {resultado.falhas.length} registro(s) não foram gravados
+          </>
+        ) : (
+          <>
+            <CheckCircle2 className="size-4 text-green-600" aria-hidden />
+            Importação concluída
+          </>
+        )}
       </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Contador valor={resultado.novosClientes} rotulo="Novos clientes" />
