@@ -28,7 +28,7 @@ import {
 import { useSistema } from "@/hooks/useSistema";
 import { formatDate } from "@/lib/format";
 import { gerarModeloDocumento } from "@/lib/modeloDocumento";
-import { normalizarNome } from "@/lib/similarity";
+import { correspondeBusca } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
 export const Route = createFileRoute("/clientes/")({
@@ -69,18 +69,10 @@ function Clientes() {
   // Apenas clientes em tramitação: não pagos e não excluídos
   const lista = useMemo(() => {
     if (!base) return [];
-    let resultado = base.clientes.filter(
-      (c) => c.status !== "pago" && c.status !== "arquivado" && !c.deleted_at,
+    // Visão CLIENTES = situação EM_TRAMITACAO, derivada da base central.
+    const resultado = base.emTramitacao.filter((cliente) =>
+      correspondeBusca(cliente, busca, variacoesPorCliente),
     );
-
-    const termo = normalizarNome(busca);
-    if (termo) {
-      resultado = resultado.filter(
-        (cliente) =>
-          cliente.nome_normalizado.includes(termo) ||
-          (variacoesPorCliente.get(cliente.id) ?? []).some((nome) => nome.includes(termo)),
-      );
-    }
 
     const ordenadores: Record<Ordenacao, (a: ClienteComTotais, b: ClienteComTotais) => number> = {
       nome: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
@@ -104,9 +96,7 @@ function Clientes() {
     );
   }
 
-  const totalEmTramitacao = base.clientes.filter(
-    (c) => c.status !== "pago" && c.status !== "arquivado" && !c.deleted_at,
-  ).length;
+  const totalEmTramitacao = base.indicadores.emTramitacao;
 
   return (
     <div>

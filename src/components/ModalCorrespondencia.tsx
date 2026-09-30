@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowRight, Check, Clock, X } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/acoes";
 import { formatDate } from "@/lib/format";
 import { ROTULO_TIPO_PAGAMENTO, type CorrespondenciaDetalhada, type Pagamento } from "@/lib/tipos";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 export interface ModalCorrespondenciaProps {
   item: CorrespondenciaDetalhada | null;
@@ -30,7 +31,7 @@ export interface ModalCorrespondenciaProps {
 }
 
 export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorrespondenciaProps) {
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
 
   const executar = useMutation({
     mutationFn: async (acao: "confirmar" | "rejeitar" | "adiar") => {
@@ -60,7 +61,7 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
         adiar: "Guardado para analisar depois.",
       } as const;
       toast.success(mensagens[acao]);
-      await queryClient.invalidateQueries();
+      await sincronizar(EVENTOS.CORRESPONDENCIA_REVISADA);
       onFechar();
     },
     onError: (erro: Error) => toast.error(erro.message),

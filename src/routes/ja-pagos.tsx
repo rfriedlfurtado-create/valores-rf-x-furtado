@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
 import { formatDate } from "@/lib/format";
-import { normalizarNome } from "@/lib/similarity";
+import { correspondeBusca } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
 export const Route = createFileRoute("/ja-pagos")({
@@ -51,23 +51,26 @@ type OrdenacaoJaPagos = "pago_recente" | "pago_antigo" | "valor_desc" | "valor_a
 
 
 function JaPagos() {
-  const { base, carregando } = useSistema();
+  const { base, variacoes, carregando } = useSistema();
   const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<OrdenacaoJaPagos>("pago_recente");
 
+  const variacoesPorCliente = useMemo(() => {
+    const mapa = new Map<string, string[]>();
+    for (const variacao of variacoes) {
+      mapa.set(variacao.cliente_id, [...(mapa.get(variacao.cliente_id) ?? []), variacao.nome_normalizado]);
+    }
+    return mapa;
+  }, [variacoes]);
+
   const lista = useMemo(() => {
     if (!base) return [];
 
-    // Apenas clientes com status "pago" e não excluídos
-    let resultado: ClienteComTotais[] = base.clientes.filter(
-      (c) => c.status === "pago" && !c.deleted_at,
+    // Visão JÁ PAGOS = situação PAGO, derivada da base central (sem cópia do cliente).
+    const resultado: ClienteComTotais[] = base.jaPagos.filter((cliente) =>
+      correspondeBusca(cliente, busca, variacoesPorCliente),
     );
-
-    const termo = normalizarNome(busca);
-    if (termo) {
-      resultado = resultado.filter((c) => c.nome_normalizado.includes(termo));
-    }
 
     const ordenadores: Record<OrdenacaoJaPagos, (a: ClienteComTotais, b: ClienteComTotais) => number> = {
       pago_recente: (a, b) => b.updated_at.localeCompare(a.updated_at),
@@ -78,7 +81,7 @@ function JaPagos() {
     };
 
     return [...resultado].sort(ordenadores[ordenacao]);
-  }, [base, busca, ordenacao]);
+  }, [base, busca, ordenacao, variacoesPorCliente]);
 
   if (carregando || !base) {
     return (
@@ -93,7 +96,11 @@ function JaPagos() {
     <div>
       <PageHeader
         titulo="Já pagos"
-        descricao={`${lista.length} cliente(s) identificado(s) como já pago(s).`}
+        descricao={`${base.indicadores.jaPagos} cliente(s) identificado(s) como já pago(s)${
+          base.indicadores.pagosSemValor
+            ? ` · ${base.indicadores.pagosSemValor} sem valor informado`
+            : ""
+        }.`}
       />
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">

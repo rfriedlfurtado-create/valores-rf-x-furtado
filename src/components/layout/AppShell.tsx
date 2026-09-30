@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
@@ -14,18 +15,22 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from "react"
 
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { baseQuery } from "@/lib/dados";
+import type { Indicadores } from "@/lib/situacao";
 import { cn } from "@/lib/utils";
 
 interface ItemMenu {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
+  /** Contador derivado da base central (mesma fonte das páginas). */
+  contador?: (indicadores: Indicadores) => number;
 }
 
 const ITENS_MENU: ItemMenu[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/clientes", label: "Clientes", icon: Users },
-  { to: "/ja-pagos", label: "Já pagos", icon: Wallet },
+  { to: "/clientes", label: "Clientes", icon: Users, contador: (i) => i.emTramitacao },
+  { to: "/ja-pagos", label: "Já pagos", icon: Wallet, contador: (i) => i.jaPagos },
   { to: "/pagamentos", label: "Histórico de pagamentos", icon: Receipt },
   { to: "/analise", label: "Análise de nomes", icon: FileSearch },
   { to: "/importacoes", label: "Histórico de importações", icon: History },
@@ -34,6 +39,7 @@ const ITENS_MENU: ItemMenu[] = [
 
 function NavItens({ onNavegar }: { onNavegar?: () => void }) {
   const caminho = useRouterState({ select: (state) => state.location.pathname });
+  const { data: base } = useQuery(baseQuery());
 
   return (
     <nav className="flex flex-col gap-1 px-3">
@@ -54,6 +60,11 @@ function NavItens({ onNavegar }: { onNavegar?: () => void }) {
           >
             <Icone className="size-4 shrink-0" aria-hidden />
             <span className="truncate">{item.label}</span>
+            {item.contador && base ? (
+              <span className="ml-auto rounded-full bg-sidebar-foreground/10 px-2 py-0.5 text-xs tabular">
+                {item.contador(base.indicadores)}
+              </span>
+            ) : null}
           </Link>
         );
       })}

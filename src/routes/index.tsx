@@ -1,5 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUpRight, CalendarPlus, Coins, Users, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  CalendarPlus,
+  Coins,
+  UserCheck,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { ModalCorrespondencia } from "@/components/ModalCorrespondencia";
@@ -9,7 +17,7 @@ import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filtrarJaPagos, useSistema } from "@/hooks/useSistema";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatPercent } from "@/lib/format";
 import type { CorrespondenciaDetalhada } from "@/lib/tipos";
 
 export const Route = createFileRoute("/")({
@@ -35,37 +43,20 @@ function Dashboard() {
   const { base, correspondencias, carregando } = useSistema();
   const [selecionado, setSelecionado] = useState<CorrespondenciaDetalhada | null>(null);
 
-  const jaPagos = useMemo(
-    () => filtrarJaPagos(correspondencias).filter((item) => item.correspondencia.status === "pendente"),
+  // Correspondências de nomes (alertas de similaridade) — NÃO confundir com
+  // a situação PAGO do cliente, que vem de base.indicadores.jaPagos.
+  const pendentes = useMemo(
+    () => correspondencias.filter((item) => item.correspondencia.status === "pendente"),
     [correspondencias],
   );
-
-  const possiveis = useMemo(
-    () =>
-      correspondencias.filter(
-        (item) =>
-          item.correspondencia.status === "pendente" &&
-          item.correspondencia.classificacao === "possivel",
-      ),
-    [correspondencias],
-  );
-
-  const importadosNoMes = useMemo(() => {
-    if (!base) return 0;
-    const inicio = new Date();
-    inicio.setDate(1);
-    inicio.setHours(0, 0, 0, 0);
-    return base.clientes.filter(
-      (cliente) => cliente.data_importacao && new Date(cliente.data_importacao) >= inicio,
-    ).length;
-  }, [base]);
+  const pendentesComHistorico = useMemo(() => filtrarJaPagos(pendentes), [pendentes]);
 
   if (carregando || !base) {
     return (
       <div className="space-y-6">
         <PageHeader titulo="Dashboard" descricao="Carregando os dados da base..." />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, indice) => (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, indice) => (
             <Skeleton key={indice} className="h-32 rounded-xl" />
           ))}
         </div>
@@ -78,6 +69,8 @@ function Dashboard() {
     ? (base.pagamentosPorCliente.get(selecionado.clienteEncontrado.id) ?? [])
     : [];
 
+  const ind = base.indicadores;
+
   return (
     <div>
       <PageHeader
@@ -85,60 +78,79 @@ function Dashboard() {
         descricao="Panorama da base histórica e das correspondências encontradas."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard titulo="Total de clientes" valor={base.clientes.length} icone={Users} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <StatCard
+          titulo="Em tramitação"
+          valor={ind.emTramitacao}
+          icone={Users}
+          tom="info"
+          descricao="Clientes na página Clientes"
+        />
+        <StatCard
+          titulo="Já pagos"
+          valor={ind.jaPagos}
+          icone={Wallet}
+          tom="money"
+          descricao={`${formatPercent(ind.percentualPagos)} da base${
+            ind.pagosSemValor ? ` · ${ind.pagosSemValor} sem valor informado` : ""
+          }`}
+        />
+        <StatCard
+          titulo="Total de clientes"
+          valor={ind.totalClientes}
+          icone={UserCheck}
+          descricao={`${ind.importadosNoMes} importado(s) neste mês`}
+        />
+        <StatCard
+          titulo="Valor recebido"
+          valor={formatBRL(ind.valorRecebido)}
+          icone={Coins}
+          tom="money"
+          descricao={`${ind.quantidadePagamentos} pagamento(s) registrado(s)`}
+        />
         <StatCard
           titulo="Importados no mês"
-          valor={importadosNoMes}
+          valor={ind.importadosNoMes}
           icone={CalendarPlus}
           tom="info"
         />
         <StatCard
-          titulo="Já pagos identificados"
-          valor={jaPagos.length}
-          icone={Wallet}
-          tom="danger"
-          descricao="Aguardando sua conferência"
-        />
-        <StatCard
-          titulo="Valor total já pago"
-          valor={formatBRL(base.totalPago)}
-          icone={Coins}
-          tom="money"
-          descricao={`${base.totalPagamentos} pagamentos registrados`}
-        />
-        <StatCard
-          titulo="Possíveis correspondências"
-          valor={possiveis.length}
+          titulo="Correspondências a conferir"
+          valor={pendentes.length}
           icone={AlertTriangle}
           tom="warning"
+          descricao={`${pendentesComHistorico.length} com histórico de pagamento`}
         />
       </div>
+
+      <DistribuicaoSituacao emTramitacao={ind.emTramitacao} jaPagos={ind.jaPagos} />
 
       <section className="mt-8">
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold tracking-tight">Clientes identificados como já pagos</h2>
+            <h2 className="text-lg font-bold tracking-tight">
+              Correspondências com histórico de pagamento
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Nomes da nova listagem que batem com clientes que já receberam valores.
+              Nomes importados parecidos com clientes que já têm valores registrados.
             </p>
           </div>
           <Button asChild variant="ghost" size="sm">
-            <Link to="/ja-pagos">
+            <Link to="/analise">
               Ver todos
               <ArrowUpRight className="size-4" aria-hidden />
             </Link>
           </Button>
         </div>
 
-        {jaPagos.length === 0 ? (
+        {pendentesComHistorico.length === 0 ? (
           <SecaoVazia
             titulo="Nenhuma correspondência pendente"
             descricao="Importe uma nova listagem para que o sistema compare com a base histórica."
           />
         ) : (
           <TabelaCorrespondencias
-            itens={jaPagos.slice(0, 10)}
+            itens={pendentesComHistorico.slice(0, 10)}
             onAbrir={setSelecionado}
             mostrarStatus={false}
           />
@@ -151,5 +163,50 @@ function Dashboard() {
         onFechar={() => setSelecionado(null)}
       />
     </div>
+  );
+}
+
+/** Gráfico de distribuição por situação — derivado dos mesmos indicadores. */
+function DistribuicaoSituacao({
+  emTramitacao,
+  jaPagos,
+}: {
+  emTramitacao: number;
+  jaPagos: number;
+}) {
+  const total = emTramitacao + jaPagos;
+  const pctPagos = total ? (jaPagos / total) * 100 : 0;
+  return (
+    <section
+      className="mt-6 rounded-xl border border-border bg-card p-5"
+      aria-label="Situação dos clientes"
+    >
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide">Situação dos clientes</h2>
+        <p className="text-xs text-muted-foreground">{total} cliente(s)</p>
+      </div>
+      <div
+        className="flex h-4 w-full overflow-hidden rounded-full bg-muted"
+        role="img"
+        aria-label={`${emTramitacao} em tramitação, ${jaPagos} já pagos`}
+      >
+        <div className="h-full bg-info" style={{ width: `${100 - pctPagos}%` }} />
+        <div className="h-full bg-money" style={{ width: `${pctPagos}%` }} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <span className="flex items-center gap-2">
+          <span className="size-2.5 rounded-full bg-info" aria-hidden />
+          Em tramitação <strong className="tabular">{emTramitacao}</strong>
+          <span className="text-muted-foreground">
+            ({formatPercent(total ? 100 - pctPagos : 0)})
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-2.5 rounded-full bg-money" aria-hidden />
+          Já pagos <strong className="tabular">{jaPagos}</strong>
+          <span className="text-muted-foreground">({formatPercent(pctPagos)})</span>
+        </span>
+      </div>
+    </section>
   );
 }

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { FlaskConical, Save, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import { Slider } from "@/components/ui/slider";
 import { useSistema } from "@/hooks/useSistema";
 import { salvarLimiares, zerarSistema } from "@/lib/acoes";
 import { compararNomes, normalizarNome, type LimiaresSimilaridade } from "@/lib/similarity";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 export const Route = createFileRoute("/configuracoes")({
   head: () => ({
@@ -135,7 +136,7 @@ function Testador({ limiares }: { limiares: LimiaresSimilaridade }) {
 const PALAVRA_CONFIRMACAO = "ZERAR";
 
 function ZonaDePerigo() {
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
   const [confirmacao, setConfirmacao] = useState("");
   const [aberto, setAberto] = useState(false);
 
@@ -145,7 +146,7 @@ function ZonaDePerigo() {
       toast.success("Sistema zerado. Todos os dados de clientes foram removidos.");
       setAberto(false);
       setConfirmacao("");
-      await queryClient.invalidateQueries();
+      await sincronizar(EVENTOS.SISTEMA_ZERADO);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -211,7 +212,7 @@ function ZonaDePerigo() {
 
 function Configuracoes() {
   const { limiares, carregando } = useSistema();
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
   const [rascunho, setRascunho] = useState<LimiaresSimilaridade | null>(null);
 
   useEffect(() => {
@@ -230,7 +231,7 @@ function Configuracoes() {
     },
     onSuccess: async () => {
       toast.success("Limiares salvos. Novas importações já usam os novos valores.");
-      await queryClient.invalidateQueries({ queryKey: ["configuracoes"] });
+      await sincronizar(EVENTOS.CONFIGURACAO_ALTERADA);
     },
     onError: (erro: Error) => toast.error(erro.message),
   });

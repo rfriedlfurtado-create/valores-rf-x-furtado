@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { registrarPagamento } from "@/lib/acoes";
 import { parseBRL, todayISO } from "@/lib/format";
 import { TIPOS_PAGAMENTO, type ClienteComTotais, type TipoPagamento } from "@/lib/tipos";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 export interface DialogPagamentoProps {
   /** Quando informado, o cliente fica fixo (uso no perfil). */
@@ -37,7 +38,7 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
   const [observacao, setObservacao] = useState("");
   const [usuario, setUsuario] = useState("");
 
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -51,8 +52,8 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
       });
     },
     onSuccess: async () => {
+      await sincronizar(EVENTOS.PAGAMENTO_REGISTRADO);
       toast.success("Pagamento registrado com sucesso.");
-      await queryClient.invalidateQueries();
       setAberto(false);
       setValor("");
       setObservacao("");

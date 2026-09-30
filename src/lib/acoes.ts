@@ -8,14 +8,14 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { chaveParRejeitado, normalizarNome, type LimiaresSimilaridade } from "./similarity";
-import { todayISO } from "./format";
 import {
-  MARCA_PAGAMENTO_MODELO,
-  statusDaSituacao,
+  montarPayloadImportacao,
   VERSAO_MODELO,
   type ItemPlano,
   type PlanoModelo,
 } from "./modeloDocumento";
+import type { Json } from "@/integrations/supabase/types";
+
 import type { Cliente, TipoPagamento } from "./tipos";
 
 function erro(message: string): never {
@@ -50,15 +50,6 @@ export async function arquivarCliente(id: string): Promise<void> {
   if (error) erro(error.message);
 }
 
-/** Marca o cliente como já pago — ele sai da página Clientes e aparece em Já Pagos. */
-export async function marcarComoPago(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("clientes")
-    .update({ status: "pago" })
-    .eq("id", id);
-  if (error) erro(error.message);
-}
-
 /**
  * Exclusão definitiva (hard delete) com cascata completa.
  *
@@ -74,46 +65,10 @@ export async function marcarComoPago(id: string): Promise<void> {
  * continuará considerando o cliente — ele simplesmente deixa de existir.
  */
 export async function excluirCliente(id: string): Promise<void> {
-  // 1. Pagamentos do cliente
-  const pagamentos = await supabase.from("pagamentos").delete().eq("cliente_id", id);
-  if (pagamentos.error) erro(pagamentos.error.message);
-
-  // 2. Variações de nome
-  const variacoes = await supabase.from("variacoes_nome").delete().eq("cliente_id", id);
-  if (variacoes.error) erro(variacoes.error.message);
-
-  // 3. Correspondências onde este cliente foi o "encontrado" (já pago histórico)
-  const corrEncontrado = await supabase
-    .from("correspondencias")
-    .delete()
-    .eq("cliente_encontrado_id", id);
-  if (corrEncontrado.error) erro(corrEncontrado.error.message);
-
-  // 4 & 5. Registros importados vinculados + suas correspondências
-  const { data: importados, error: errImportados } = await supabase
-    .from("clientes_importados")
-    .select("id")
-    .eq("cliente_vinculado_id", id);
-  if (errImportados) erro(errImportados.message);
-
-  if (importados && importados.length > 0) {
-    const ids = (importados as { id: string }[]).map((r) => r.id);
-    const corrImportados = await supabase
-      .from("correspondencias")
-      .delete()
-      .in("cliente_importado_id", ids);
-    if (corrImportados.error) erro(corrImportados.error.message);
-
-    const delImportados = await supabase
-      .from("clientes_importados")
-      .delete()
-      .eq("cliente_vinculado_id", id);
-    if (delImportados.error) erro(delImportados.error.message);
-  }
-
-  // 6. O próprio cadastro
-  const cliente = await supabase.from("clientes").delete().eq("id", id);
-  if (cliente.error) erro(cliente.error.message);
+  // Uma única transação no banco (função `excluir_cliente`): ou tudo é
+  // removido, ou nada é — nunca sobra pagamento/correspondência órfã.
+  const { error } = await supabase.rpc("excluir_cliente", { p_cliente_id: id });
+  if (error) erro(error.message);
 }
 
 export async function reativarCliente(id: string): Promise<void> {
@@ -266,21 +221,8 @@ export async function adiarCorrespondencia(correspondenciaId: string, clienteImp
  *   7. clientes
  */
 export async function zerarSistema(): Promise<void> {
-  const tabelas = [
-    "correspondencias",
-    "correspondencias_rejeitadas",
-    "clientes_importados",
-    "importacoes",
-    "pagamentos",
-    "variacoes_nome",
-    "clientes",
-  ] as const;
-
-  for (const tabela of tabelas) {
-    // neq com valor inexistente force-deletes all rows (Supabase exige filtro)
-    const { error } = await supabase.from(tabela).delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) erro(`Erro ao limpar ${tabela}: ${error.message}`);
-  }
+  const { error } = await supabase.rpc("zerar_sistema");
+  if (error) erro(`Erro ao zerar o sistema: ${error.message}`);
 }
 
 export async function salvarLimiares(limiares: LimiaresSimilaridade): Promise<void> {
@@ -302,101 +244,42 @@ export interface ResultadoImportacaoModelo {
   pagamentosRegistrados: number;
   naoEncontrados: ItemPlano[];
   naoImportadosPorErro: ItemPlano[];
-  falhas: { item: ItemPlano; mensagem: string }[];
 }
 
 /**
  * Executa um plano já revisado pelo usuário na pré-visualização.
- * Nunca cria cliente para linha PAGO e nunca duplica: o plano já decidiu,
- * de forma determinística, se cada linha cria, atualiza ou move.
- * Reexecutar o mesmo arquivo resulta em "sem alteração" (idempotente).
+ *
+ * Toda a gravação acontece numa ÚNICA transação no banco
+ * (`aplicar_importacao_modelo`): se qualquer linha falhar, nada é gravado
+ * — não existe cliente marcado como pago sem o restante da operação, nem
+ * importação pela metade. O banco ainda revalida duplicidades no momento
+ * da gravação. Reexecutar o mesmo arquivo resulta em "sem alteração".
  */
 export async function executarPlanoModelo(params: {
   plano: PlanoModelo;
   nomeArquivo: string;
 }): Promise<ResultadoImportacaoModelo> {
-  const agora = new Date().toISOString();
-  const origem = `Modelo Documento ${VERSAO_MODELO} — ${params.nomeArquivo}`;
-  const resultado: ResultadoImportacaoModelo = {
-    novosClientes: 0,
-    existentesAtualizados: 0,
-    semAlteracao: 0,
-    movidosParaJaPagos: 0,
-    pagamentosRegistrados: 0,
-    naoEncontrados: [],
-    naoImportadosPorErro: [],
-    falhas: [],
-  };
+  const itens = montarPayloadImportacao(params.plano);
+  const naoEncontrados = params.plano.itens.filter((i) => i.acao === "nao_encontrado");
+  const naoImportadosPorErro = params.plano.itens.filter((i) => i.acao === "erro");
+  const semAlteracao = params.plano.itens.filter((i) => i.acao === "sem_alteracao").length;
 
-  for (const item of params.plano.itens) {
-    try {
-      switch (item.acao) {
-        case "erro":
-          resultado.naoImportadosPorErro.push(item);
-          break;
-        case "nao_encontrado":
-          resultado.naoEncontrados.push(item);
-          break;
-        case "sem_alteracao":
-          resultado.semAlteracao += 1;
-          break;
-        case "criar": {
-          const { error } = await supabase.from("clientes").insert({
-            nome: item.linha.nome,
-            nome_normalizado: normalizarNome(item.linha.nome),
-            cpf: item.linha.cpfNormalizado ? item.linha.cpf : null,
-            numero_processo: item.linha.processo,
-            status: statusDaSituacao("NAO_PAGO"),
-            origem_importacao: origem,
-            data_importacao: agora,
-          });
-          if (error) erro(error.message);
-          resultado.novosClientes += 1;
-          break;
-        }
-        case "atualizar":
-        case "marcar_pago": {
-          if (!item.clienteId) erro("Cliente não identificado.");
-          if (Object.keys(item.alteracoes).length > 0) {
-            const { error } = await supabase
-              .from("clientes")
-              .update(item.alteracoes)
-              .eq("id", item.clienteId);
-            if (error) erro(error.message);
-          }
-          if (item.registrarValor != null) {
-            const { error } = await supabase.from("pagamentos").insert({
-              cliente_id: item.clienteId,
-              valor: item.registrarValor,
-              data_pagamento: todayISO(),
-              tipo: "outro",
-              observacao: MARCA_PAGAMENTO_MODELO,
-              usuario_cadastro: "Modelo Documento",
-            });
-            if (error) erro(error.message);
-            resultado.pagamentosRegistrados += 1;
-          }
-          if (item.alteracoes.status === "pago") resultado.movidosParaJaPagos += 1;
-          else resultado.existentesAtualizados += 1;
-          break;
-        }
-      }
-    } catch (e) {
-      resultado.falhas.push({
-        item,
-        mensagem: e instanceof Error ? e.message : "Erro desconhecido.",
-      });
-    }
-  }
-
-  // Histórico em Importações (rastreabilidade).
-  await supabase.from("importacoes").insert({
-    nome_importacao: `Modelo Documento — ${params.nomeArquivo}`,
-    origem_arquivo: params.nomeArquivo,
-    tipo_origem: "arquivo",
-    quantidade_clientes: params.plano.resumo.total,
-    quantidade_ja_pagos: resultado.movidosParaJaPagos,
+  const { data, error } = await supabase.rpc("aplicar_importacao_modelo", {
+    p_itens: itens as unknown as Json,
+    p_origem: `Modelo Documento ${VERSAO_MODELO} — ${params.nomeArquivo}`,
+    p_arquivo: params.nomeArquivo,
+    p_total_linhas: params.plano.resumo.total,
   });
+  if (error) erro(error.message);
 
-  return resultado;
+  const r = (data ?? {}) as { novos?: number; atualizados?: number; movidos?: number; valores?: number };
+  return {
+    novosClientes: r.novos ?? 0,
+    existentesAtualizados: r.atualizados ?? 0,
+    semAlteracao,
+    movidosParaJaPagos: r.movidos ?? 0,
+    pagamentosRegistrados: r.valores ?? 0,
+    naoEncontrados,
+    naoImportadosPorErro,
+  };
 }

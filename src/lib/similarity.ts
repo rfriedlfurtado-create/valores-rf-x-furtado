@@ -12,6 +12,8 @@
  *  - Similaridade por tokens (palavras em comum, ignorando ordem)
  */
 
+import { normalizarTexto } from "./situacao";
+
 export type Classificacao = "igual" | "muito_parecido" | "possivel";
 
 export interface LimiaresSimilaridade {
@@ -51,13 +53,7 @@ export function normalizarCPF(valor: string | null | undefined): string | null {
  * O nome original NUNCA é alterado — apenas a chave de comparação.
  */
 export function normalizarNome(nome: string): string {
-  return nome
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizarTexto(nome);
 }
 
 export function tokensDoNome(nomeNormalizado: string): string[] {

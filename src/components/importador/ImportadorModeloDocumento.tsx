@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Upload, XCircle } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useSistema } from "@/hooks/useSistema";
 import { executarPlanoModelo, type ResultadoImportacaoModelo } from "@/lib/acoes";
-import { CHAVES_PARA_INVALIDAR } from "@/lib/dados";
 import { formatBRL } from "@/lib/format";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 import {
   analisarModeloDocumento,
   planejarImportacaoModelo,
@@ -130,7 +130,7 @@ type Filtro = "problemas" | "todos";
  */
 export interface ImportadorModeloDocumentoProps {
   /**
-   * Chamado somente quando a importação termina sem falhas de gravação,
+   * Chamado somente quando a transação de importação é concluída,
    * depois que as listagens já foram atualizadas. O modal usa para fechar.
    */
   onConcluido?: ((resultado: ResultadoImportacaoModelo) => void) | undefined;
@@ -151,7 +151,7 @@ function descreverResultado(res: ResultadoImportacaoModelo): string {
 
 export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocumentoProps = {}) {
   const { base, variacoes } = useSistema();
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -196,20 +196,11 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
     mutationFn: () =>
       executarPlanoModelo({ plano: plano!, nomeArquivo: arquivo?.name ?? "arquivo" }),
     onSuccess: async (res) => {
-      // 1) Atualiza CLIENTES / JÁ PAGOS antes de qualquer outra coisa.
-      await Promise.all(
-        CHAVES_PARA_INVALIDAR.map((chave) => queryClient.invalidateQueries({ queryKey: chave })),
-      );
+      // 1) Atualização sistêmica: quando isto resolve, CLIENTES, JÁ PAGOS,
+      //    Dashboard e demais visões já refletem o que foi gravado.
+      await sincronizar(EVENTOS.IMPORTACAO_CONCLUIDA);
 
-      // 2) Falha de gravação → mantém aberto, com o resultado e os erros visíveis.
-      if (res.falhas.length > 0) {
-        setResultado(res);
-        limpar();
-        toast.error(`${res.falhas.length} registro(s) falharam ao gravar. Veja os detalhes.`);
-        return;
-      }
-
-      // 3) Sucesso → aviso e fechamento automático (quando usado dentro do modal).
+      // 2) Aviso e fechamento automático (quando usado dentro do modal).
       toast.success("Importação concluída", {
         description: descreverResultado(res),
         duration: 8000,
@@ -218,7 +209,12 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
       if (onConcluido) onConcluido(res);
       else setResultado(res);
     },
-    onError: (err: Error) => toast.error(`Falha na importação: ${err.message}`),
+    onError: async (err: Error) => {
+      // A transação foi desfeita — nada gravado. Revalida a base para que a
+      // pré-visualização seja recalculada com o estado real antes de tentar de novo.
+      toast.error(`Falha na importação: ${err.message}`);
+      await sincronizar(EVENTOS.CLIENTE_ATUALIZADO);
+    },
   });
 
   const ocupado = lendo || mutation.isPending;
@@ -274,7 +270,8 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
           </p>
           <p className="text-xs">{mutation.error.message}</p>
           <p className="text-xs text-muted-foreground">
-            Corrija o problema e tente novamente, ou selecione outro arquivo.
+            Nenhum dado foi gravado (a operação é tudo ou nada). Corrija o problema e tente
+            novamente, ou selecione outro arquivo.
           </p>
         </Card>
       ) : null}
@@ -392,26 +389,15 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
 }
 
 function ResultadoModelo({ resultado }: { resultado: ResultadoImportacaoModelo }) {
-  const pendentes = [
-    ...resultado.naoEncontrados,
-    ...resultado.naoImportadosPorErro,
-    ...resultado.falhas.map((f) => ({ ...f.item, acao: "erro" as const, motivo: f.mensagem })),
-  ].sort((a, b) => a.linha.numeroLinha - b.linha.numeroLinha);
+  const pendentes = [...resultado.naoEncontrados, ...resultado.naoImportadosPorErro].sort(
+    (a, b) => a.linha.numeroLinha - b.linha.numeroLinha,
+  );
 
   return (
     <Card className="gap-4 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold">
-        {resultado.falhas.length > 0 ? (
-          <>
-            <AlertTriangle className="size-4 text-red-600" aria-hidden />
-            Importação não concluída — {resultado.falhas.length} registro(s) não foram gravados
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="size-4 text-green-600" aria-hidden />
-            Importação concluída
-          </>
-        )}
+        <CheckCircle2 className="size-4 text-green-600" aria-hidden />
+        Importação concluída
       </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Contador valor={resultado.novosClientes} rotulo="Novos clientes" />
@@ -425,10 +411,7 @@ function ResultadoModelo({ resultado }: { resultado: ResultadoImportacaoModelo }
           destaque="text-green-700 dark:text-green-400"
         />
         <Contador valor={resultado.naoEncontrados.length} rotulo="Não encontrados" />
-        <Contador
-          valor={resultado.naoImportadosPorErro.length + resultado.falhas.length}
-          rotulo="Não importados por erro"
-        />
+        <Contador valor={resultado.naoImportadosPorErro.length} rotulo="Não importados por erro" />
       </div>
       {pendentes.length > 0 ? (
         <div className="grid gap-2">

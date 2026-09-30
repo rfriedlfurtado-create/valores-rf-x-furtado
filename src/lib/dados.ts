@@ -10,9 +10,9 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { LIMIARES_PADRAO, type LimiaresSimilaridade } from "./similarity";
+import { agregarBase, type BaseAgregada } from "./agregacao";
 import type {
   Cliente,
-  ClienteComTotais,
   ClienteImportado,
   Correspondencia,
   CorrespondenciaDetalhada,
@@ -26,82 +26,29 @@ function assertOk<T>(result: { data: T | null; error: { message: string } | null
   return (result.data ?? []) as T;
 }
 
+export { agregarBase, type BaseAgregada };
+
 function numero(valor: unknown): number {
   const n = typeof valor === "string" ? Number(valor) : (valor as number);
   return Number.isFinite(n) ? n : 0;
 }
 
-export interface BaseAgregada {
-  clientes: ClienteComTotais[];
-  porId: Map<string, ClienteComTotais>;
-  pagamentosPorCliente: Map<string, Pagamento[]>;
-  totalPago: number;
-  totalPagamentos: number;
-}
-
 async function carregarBase(): Promise<BaseAgregada> {
   const [clientesRes, pagamentosRes] = await Promise.all([
-    supabase
-      .from("clientes")
-      .select("*")
-      .is("deleted_at", null)
-      .order("nome", { ascending: true }),
+    supabase.from("clientes").select("*").is("deleted_at", null).order("nome", { ascending: true }),
     supabase.from("pagamentos").select("*").order("data_pagamento", { ascending: false }),
   ]);
 
-  const clientes = assertOk(clientesRes) as unknown as Cliente[];
-  const pagamentosBrutos = assertOk(pagamentosRes) as unknown as Pagamento[];
-
-  const pagamentos = pagamentosBrutos.map((p) => ({ ...p, valor: numero(p.valor) }));
-  const pagamentosPorCliente = new Map<string, Pagamento[]>();
-  for (const pagamento of pagamentos) {
-    const lista = pagamentosPorCliente.get(pagamento.cliente_id) ?? [];
-    lista.push(pagamento);
-    pagamentosPorCliente.set(pagamento.cliente_id, lista);
-  }
-
-  const comTotais: ClienteComTotais[] = clientes.map((cliente) => {
-    const lista = pagamentosPorCliente.get(cliente.id) ?? [];
-    const datas = lista.map((p) => p.data_pagamento).sort();
-    return {
-      ...cliente,
-      totalRecebido: lista.reduce((soma, p) => soma + p.valor, 0),
-      quantidadePagamentos: lista.length,
-      ultimoPagamento: datas.length ? datas[datas.length - 1]! : null,
-      primeiroPagamento: datas.length ? datas[0]! : null,
-    };
-  });
-
-  // Totais apenas de clientes ativos (deleted_at IS NULL), não de arquivados.
-  const idsAtivos = new Set(comTotais.map((c) => c.id));
-  const pagamentosAtivos = pagamentos.filter((p) => idsAtivos.has(p.cliente_id));
-
-  return {
-    clientes: comTotais,
-    porId: new Map(comTotais.map((c) => [c.id, c])),
-    pagamentosPorCliente,
-    totalPago: pagamentosAtivos.reduce((soma, p) => soma + p.valor, 0),
-    totalPagamentos: pagamentosAtivos.length,
-  };
+  return agregarBase(
+    assertOk(clientesRes) as unknown as Cliente[],
+    assertOk(pagamentosRes) as unknown as Pagamento[],
+  );
 }
 
 export const baseQuery = () =>
   queryOptions({
     queryKey: ["base"],
     queryFn: carregarBase,
-    staleTime: 30_000,
-  });
-
-export const pagamentosQuery = () =>
-  queryOptions({
-    queryKey: ["pagamentos"],
-    queryFn: async () => {
-      const res = await supabase
-        .from("pagamentos")
-        .select("*")
-        .order("data_pagamento", { ascending: false });
-      return (assertOk(res) as unknown as Pagamento[]).map((p) => ({ ...p, valor: numero(p.valor) }));
-    },
     staleTime: 30_000,
   });
 
@@ -213,9 +160,12 @@ export function montarCorrespondencias(
     .filter((item): item is CorrespondenciaDetalhada => item !== null);
 }
 
-export const CHAVES_PARA_INVALIDAR = [
+/**
+ * Todas as consultas de dados de domínio. Qualquer evento de domínio
+ * revalida estas chaves (ver `sincronizacao.ts`).
+ */
+export const CHAVES_DOMINIO = [
   ["base"],
-  ["pagamentos"],
   ["variacoes"],
   ["importacoes"],
   ["clientes_importados"],

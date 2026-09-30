@@ -724,3 +724,45 @@ export function planejarImportacaoModelo(params: {
 
   return { itens, resumo };
 }
+
+// ---------------------------------------------------------------------------
+// 5. Payload para a função transacional `aplicar_importacao_modelo`
+// ---------------------------------------------------------------------------
+
+export interface ItemPayloadModelo {
+  acao: "criar" | "atualizar" | "marcar_pago";
+  linha: number;
+  nome?: string;
+  nome_normalizado?: string;
+  cpf?: string | null;
+  numero_processo?: string | null;
+  cliente_id?: string;
+  alteracoes?: ItemPlano["alteracoes"];
+  valor?: number | null;
+}
+
+/** Converte o plano revisado no payload gravado numa única transação. */
+export function montarPayloadImportacao(plano: PlanoModelo): ItemPayloadModelo[] {
+  const itens: ItemPayloadModelo[] = [];
+  for (const item of plano.itens) {
+    if (item.acao === "criar") {
+      itens.push({
+        acao: "criar",
+        linha: item.linha.numeroLinha,
+        nome: item.linha.nome,
+        nome_normalizado: item.linha.nomeNormalizado,
+        cpf: item.linha.cpfNormalizado ? item.linha.cpf : null,
+        numero_processo: item.linha.processo,
+      });
+    } else if (item.acao === "atualizar" || item.acao === "marcar_pago") {
+      itens.push({
+        acao: item.acao,
+        linha: item.linha.numeroLinha,
+        cliente_id: item.clienteId!,
+        alteracoes: item.alteracoes,
+        valor: item.registrarValor,
+      });
+    }
+  }
+  return itens;
+}

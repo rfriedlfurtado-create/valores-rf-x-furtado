@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
+import { useSincronizacaoTempoReal } from "@/lib/sincronizacao";
 
 function NotFoundComponent() {
   return (
@@ -119,11 +120,18 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Mantém todas as telas sincronizadas com mudanças feitas fora desta aba. */
+function SincronizacaoGlobal() {
+  useSincronizacaoTempoReal();
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <SincronizacaoGlobal />
       <AppShell>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />

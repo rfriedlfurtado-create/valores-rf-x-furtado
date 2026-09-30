@@ -323,7 +323,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      aplicar_importacao_modelo: {
+        Args: {
+          p_arquivo: string
+          p_itens: Json
+          p_origem: string
+          p_total_linhas: number
+        }
+        Returns: Json
+      }
+      excluir_cliente: {
+        Args: { p_cliente_id: string }
+        Returns: undefined
+      }
+      zerar_sistema: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

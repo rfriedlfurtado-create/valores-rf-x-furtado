@@ -86,7 +86,7 @@ function HistoricoPagamentos() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard titulo="Valor no filtro atual" valor={formatBRL(totalFiltrado)} icone={Coins} tom="money" />
         <StatCard titulo="Pagamentos no filtro" valor={linhas.length} icone={Receipt} />
-        <StatCard titulo="Valor total da base" valor={formatBRL(base.totalPago)} icone={Coins} tom="money" />
+        <StatCard titulo="Valor total da base" valor={formatBRL(base.indicadores.valorRecebido)} icone={Coins} tom="money" />
       </div>
 
       <div className="my-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">

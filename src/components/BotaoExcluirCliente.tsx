@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { excluirCliente } from "@/lib/acoes";
-import { CHAVES_PARA_INVALIDAR } from "@/lib/dados";
 import type { ClienteComTotais } from "@/lib/tipos";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 interface BotaoExcluirClienteProps {
   cliente: ClienteComTotais;
@@ -31,17 +31,14 @@ interface BotaoExcluirClienteProps {
  * invalidação do cache do React Query.
  */
 export function BotaoExcluirCliente({ cliente }: BotaoExcluirClienteProps) {
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
 
   const mutation = useMutation({
     mutationFn: () => excluirCliente(cliente.id),
     onSuccess: async () => {
       toast.success(`${cliente.nome} excluído permanentemente.`);
-      // Invalida todas as queries para que dashboard, contadores e listas
-      // sejam recalculados sem qualquer dado deste cliente.
-      for (const chave of CHAVES_PARA_INVALIDAR) {
-        await queryClient.invalidateQueries({ queryKey: chave });
-      }
+      // Dashboard, contadores, listas e históricos são recalculados sem este cliente.
+      await sincronizar(EVENTOS.CLIENTE_EXCLUIDO);
     },
     onError: (err: Error) => toast.error(err.message),
   });

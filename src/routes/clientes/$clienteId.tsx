@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Archive, CalendarClock, CalendarDays, Coins, Plus, Receipt, Save } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -19,6 +19,8 @@ import { useSistema } from "@/hooks/useSistema";
 import { arquivarCliente, atualizarCliente, reativarCliente } from "@/lib/acoes";
 import { formatBRL, formatDate } from "@/lib/format";
 import { ROTULO_TIPO_PAGAMENTO } from "@/lib/tipos";
+import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
+import { ROTULO_SITUACAO, situacaoDoCliente } from "@/lib/situacao";
 
 export const Route = createFileRoute("/clientes/$clienteId")({
   head: () => ({
@@ -38,7 +40,7 @@ export const Route = createFileRoute("/clientes/$clienteId")({
 function PerfilCliente() {
   const { clienteId } = Route.useParams();
   const { base, variacoes, carregando } = useSistema();
-  const queryClient = useQueryClient();
+  const sincronizar = useSincronizar();
 
   const cliente = base?.porId.get(clienteId);
   const pagamentos = base?.pagamentosPorCliente.get(clienteId) ?? [];
@@ -55,8 +57,8 @@ function PerfilCliente() {
   const salvar = useMutation({
     mutationFn: () => atualizarCliente(clienteId, { nome, cpf, observacoes }),
     onSuccess: async () => {
+      await sincronizar(EVENTOS.CLIENTE_ATUALIZADO);
       toast.success("Dados atualizados.");
-      await queryClient.invalidateQueries();
       setEditando(false);
     },
     onError: (erro: Error) => toast.error(erro.message),
@@ -65,8 +67,8 @@ function PerfilCliente() {
   const alternarArquivo = useMutation({
     mutationFn: () => (cliente?.arquivado ? reativarCliente(clienteId) : arquivarCliente(clienteId)),
     onSuccess: async () => {
+      await sincronizar(EVENTOS.CLIENTE_ARQUIVADO);
       toast.success("Status atualizado. O histórico financeiro foi preservado.");
-      await queryClient.invalidateQueries();
     },
     onError: (erro: Error) => toast.error(erro.message),
   });
@@ -236,7 +238,7 @@ function PerfilCliente() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Status</dt>
-                  <dd className="font-medium capitalize">{cliente.status}</dd>
+                  <dd className="font-medium">{ROTULO_SITUACAO[situacaoDoCliente(cliente)]}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Origem da importação</dt>
