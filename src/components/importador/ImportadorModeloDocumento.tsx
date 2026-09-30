@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Upload, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Upload, XCircle } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -12,7 +12,6 @@ import { CHAVES_PARA_INVALIDAR } from "@/lib/dados";
 import { formatBRL } from "@/lib/format";
 import {
   analisarModeloDocumento,
-  gerarModeloDocumento,
   planejarImportacaoModelo,
   rotuloSituacao,
   VERSAO_MODELO,
@@ -137,6 +136,7 @@ export function ImportadorModeloDocumento() {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [analise, setAnalise] = useState<AnaliseModelo | null>(null);
   const [lendo, setLendo] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("problemas");
   const [resultado, setResultado] = useState<ResultadoImportacaoModelo | null>(null);
 
@@ -186,6 +186,8 @@ export function ImportadorModeloDocumento() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const ocupado = lendo || mutation.isPending;
+
   const itensVisiveis = plano
     ? filtro === "todos"
       ? plano.itens
@@ -199,27 +201,34 @@ export function ImportadorModeloDocumento() {
 
   return (
     <div className="grid gap-3 pt-2">
-      <p className="text-xs text-muted-foreground">
-        Use o arquivo baixado no botão <strong>Modelo Documento</strong>. Um mesmo arquivo pode ter
-        clientes <strong>NÃO PAGO</strong> (em tramitação) e <strong>PAGO</strong> (movidos para Já
-        Pagos). Nada é gravado antes da sua confirmação.
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          className="hidden"
-          onChange={(e) => void aoSelecionar(e.target.files?.[0])}
-        />
-        <Button onClick={() => inputRef.current?.click()} disabled={lendo || mutation.isPending}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => void aoSelecionar(e.target.files?.[0])}
+      />
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!ocupado) setArrastando(true);
+        }}
+        onDragLeave={() => setArrastando(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setArrastando(false);
+          if (!ocupado) void aoSelecionar(e.dataTransfer.files?.[0]);
+        }}
+        className={`flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
+          arrastando ? "border-primary bg-primary/10" : "border-border bg-background/60"
+        }`}
+      >
+        <p className="text-sm text-muted-foreground">
+          Selecione ou arraste o arquivo preenchido conforme o <strong>Modelo Documento</strong>.
+        </p>
+        <Button onClick={() => inputRef.current?.click()} disabled={ocupado}>
           <Upload className="size-4" aria-hidden />
-          {lendo ? "Analisando..." : "Selecionar arquivo do modelo"}
-        </Button>
-        <Button variant="outline" onClick={gerarModeloDocumento}>
-          <FileSpreadsheet className="size-4" aria-hidden />
-          Baixar Modelo Documento
+          {lendo ? "Analisando..." : "Selecionar arquivo"}
         </Button>
       </div>
 

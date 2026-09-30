@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ImportadorClientes } from "@/components/ImportadorClientes";
+import { CardModeloDocumento } from "@/components/DialogImportadorClientes";
 import { PageHeader } from "@/components/layout/AppShell";
 
 export const Route = createFileRoute("/importar")({
@@ -9,24 +9,24 @@ export const Route = createFileRoute("/importar")({
       { title: "Importar clientes — Base de Pagamentos" },
       {
         name: "description",
-        content:
-          "Importe uma nova listagem de clientes por arquivo ou colagem manual e compare automaticamente com a base histórica.",
+        content: "Importação de clientes exclusivamente pelo Modelo Documento.",
       },
       { property: "og:title", content: "Importar clientes — Base de Pagamentos" },
       {
         property: "og:description",
-        content: "Importação de clientes com comparação automática de nomes.",
+        content: "Importação de clientes pelo Modelo Documento.",
       },
     ],
   }),
   component: ImportarPage,
 });
 
+/** Mesma entrada única do botão "Importar Clientes" (mantida para links existentes). */
 function ImportarPage() {
   return (
-    <div>
+    <div className="max-w-3xl">
       <PageHeader titulo="Importar clientes" />
-      <ImportadorClientes />
+      <CardModeloDocumento />
     </div>
   );
 }
