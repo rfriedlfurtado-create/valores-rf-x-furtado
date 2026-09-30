@@ -1,10 +1,11 @@
-import { CheckCircle2, FileSpreadsheet, PenLine } from "lucide-react";
+import { CheckCircle2, FileCheck2, FileSpreadsheet, PenLine } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { FormularioClienteNovoManual } from "@/components/importador/FormularioClienteNovoManual";
 import { FormularioPagamentoManual } from "@/components/importador/FormularioPagamentoManual";
 import { ImportadorArquivoClientesNovos } from "@/components/importador/ImportadorArquivoClientesNovos";
 import { ImportadorArquivoPagamentos } from "@/components/importador/ImportadorArquivoPagamentos";
+import { ImportadorModeloDocumento } from "@/components/importador/ImportadorModeloDocumento";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -114,6 +115,24 @@ export function DialogImportadorClientes({ trigger }: DialogImportadorClientesPr
         </DialogHeader>
 
         <div className="grid gap-6">
+          <div className="grid gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <div className="flex items-start gap-3">
+              <FileCheck2 className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">
+                  Importar pelo Modelo Documento (recomendado)
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Arquivo padronizado único: clientes em tramitação e clientes pagos no mesmo
+                  documento, reconhecidos automaticamente.
+                </p>
+              </div>
+            </div>
+            <ImportadorModeloDocumento />
+          </div>
+
+          <Separator />
+
           <SecaoImportacao
             numero={1}
             titulo="Clientes com processos em tramitação"

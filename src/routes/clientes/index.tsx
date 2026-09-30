@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Search, Upload } from "lucide-react";
+import { FileDown, Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
 import { formatDate } from "@/lib/format";
+import { gerarModeloDocumento } from "@/lib/modeloDocumento";
 import { normalizarNome } from "@/lib/similarity";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -113,6 +114,10 @@ function Clientes() {
         titulo="Clientes"
         descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação.`}
       >
+        <Button variant="outline" onClick={gerarModeloDocumento}>
+          <FileDown className="size-4" aria-hidden />
+          Modelo Documento
+        </Button>
         <DialogPagamento
           clientes={base.clientes}
           trigger={

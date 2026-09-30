@@ -24,6 +24,7 @@ export type Database = {
           id: string
           nome: string
           nome_normalizado: string
+          numero_processo: string | null
           observacoes: string | null
           origem_importacao: string | null
           status: string
@@ -38,6 +39,7 @@ export type Database = {
           id?: string
           nome: string
           nome_normalizado: string
+          numero_processo?: string | null
           observacoes?: string | null
           origem_importacao?: string | null
           status?: string
@@ -52,6 +54,7 @@ export type Database = {
           id?: string
           nome?: string
           nome_normalizado?: string
+          numero_processo?: string | null
           observacoes?: string | null
           origem_importacao?: string | null
           status?: string

@@ -16,6 +16,7 @@ export interface Cliente {
   nome: string;
   nome_normalizado: string;
   cpf: string | null;
+  numero_processo: string | null;
   observacoes: string | null;
   status: StatusCliente;
   origem_importacao: string | null;

@@ -14,6 +14,14 @@ import {
   normalizarNome,
   type LimiaresSimilaridade,
 } from "./similarity";
+import { todayISO } from "./format";
+import {
+  MARCA_PAGAMENTO_MODELO,
+  statusDaSituacao,
+  VERSAO_MODELO,
+  type ItemPlano,
+  type PlanoModelo,
+} from "./modeloDocumento";
 import type { Cliente, ClienteComTotais, TipoPagamento } from "./tipos";
 
 function erro(message: string): never {
@@ -661,4 +669,115 @@ export async function importarNomes(params: {
     jaPagos: totalJaPagos,
     possiveis: totalPossiveis,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Importação pelo Modelo Documento (ATLAS_CLIENTES_V1)
+// ---------------------------------------------------------------------------
+
+export interface ResultadoImportacaoModelo {
+  novosClientes: number;
+  existentesAtualizados: number;
+  semAlteracao: number;
+  movidosParaJaPagos: number;
+  pagamentosRegistrados: number;
+  naoEncontrados: ItemPlano[];
+  naoImportadosPorErro: ItemPlano[];
+  falhas: { item: ItemPlano; mensagem: string }[];
+}
+
+/**
+ * Executa um plano já revisado pelo usuário na pré-visualização.
+ * Nunca cria cliente para linha PAGO e nunca duplica: o plano já decidiu,
+ * de forma determinística, se cada linha cria, atualiza ou move.
+ * Reexecutar o mesmo arquivo resulta em "sem alteração" (idempotente).
+ */
+export async function executarPlanoModelo(params: {
+  plano: PlanoModelo;
+  nomeArquivo: string;
+}): Promise<ResultadoImportacaoModelo> {
+  const agora = new Date().toISOString();
+  const origem = `Modelo Documento ${VERSAO_MODELO} — ${params.nomeArquivo}`;
+  const resultado: ResultadoImportacaoModelo = {
+    novosClientes: 0,
+    existentesAtualizados: 0,
+    semAlteracao: 0,
+    movidosParaJaPagos: 0,
+    pagamentosRegistrados: 0,
+    naoEncontrados: [],
+    naoImportadosPorErro: [],
+    falhas: [],
+  };
+
+  for (const item of params.plano.itens) {
+    try {
+      switch (item.acao) {
+        case "erro":
+          resultado.naoImportadosPorErro.push(item);
+          break;
+        case "nao_encontrado":
+          resultado.naoEncontrados.push(item);
+          break;
+        case "sem_alteracao":
+          resultado.semAlteracao += 1;
+          break;
+        case "criar": {
+          const { error } = await supabase.from("clientes").insert({
+            nome: item.linha.nome,
+            nome_normalizado: normalizarNome(item.linha.nome),
+            cpf: item.linha.cpfNormalizado ? item.linha.cpf : null,
+            numero_processo: item.linha.processo,
+            status: statusDaSituacao("NAO_PAGO"),
+            origem_importacao: origem,
+            data_importacao: agora,
+          });
+          if (error) erro(error.message);
+          resultado.novosClientes += 1;
+          break;
+        }
+        case "atualizar":
+        case "marcar_pago": {
+          if (!item.clienteId) erro("Cliente não identificado.");
+          if (Object.keys(item.alteracoes).length > 0) {
+            const { error } = await supabase
+              .from("clientes")
+              .update(item.alteracoes)
+              .eq("id", item.clienteId);
+            if (error) erro(error.message);
+          }
+          if (item.registrarValor != null) {
+            const { error } = await supabase.from("pagamentos").insert({
+              cliente_id: item.clienteId,
+              valor: item.registrarValor,
+              data_pagamento: todayISO(),
+              tipo: "outro",
+              observacao: MARCA_PAGAMENTO_MODELO,
+              usuario_cadastro: "Modelo Documento",
+            });
+            if (error) erro(error.message);
+            resultado.pagamentosRegistrados += 1;
+          }
+          if (item.alteracoes.status === "pago") resultado.movidosParaJaPagos += 1;
+          else resultado.existentesAtualizados += 1;
+          break;
+        }
+      }
+    } catch (e) {
+      resultado.falhas.push({
+        item,
+        mensagem: e instanceof Error ? e.message : "Erro desconhecido.",
+      });
+    }
+  }
+
+  // Histórico em Importações (rastreabilidade).
+  await supabase.from("importacoes").insert({
+    nome_importacao: `Modelo Documento — ${params.nomeArquivo}`,
+    origem_arquivo: params.nomeArquivo,
+    tipo_origem: "arquivo",
+    quantidade_clientes: params.plano.resumo.total,
+    quantidade_ja_pagos: resultado.movidosParaJaPagos,
+  });
+
+  return resultado;
 }

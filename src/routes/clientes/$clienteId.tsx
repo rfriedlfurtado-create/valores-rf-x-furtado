@@ -231,6 +231,10 @@ function PerfilCliente() {
                   <dd className="font-medium">{cliente.cpf || "Não informado"}</dd>
                 </div>
                 <div>
+                  <dt className="text-xs text-muted-foreground">Número do processo</dt>
+                  <dd className="font-medium tabular">{cliente.numero_processo || "Não informado"}</dd>
+                </div>
+                <div>
                   <dt className="text-xs text-muted-foreground">Status</dt>
                   <dd className="font-medium capitalize">{cliente.status}</dd>
                 </div>
