@@ -18,6 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filtrarJaPagos, useSistema } from "@/hooks/useSistema";
 import { formatBRL, formatPercent } from "@/lib/format";
+import {
+  GRUPOS_CLASSIFICACAO,
+  ROTULO_GRUPO,
+  type GrupoClassificacao,
+  type ResumoEntradas,
+} from "@/lib/situacao";
 import type { CorrespondenciaDetalhada } from "@/lib/tipos";
 
 export const Route = createFileRoute("/")({
@@ -123,7 +129,10 @@ function Dashboard() {
         />
       </div>
 
-      <DistribuicaoSituacao emTramitacao={ind.emTramitacao} jaPagos={ind.jaPagos} />
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <DistribuicaoSituacao emTramitacao={ind.emTramitacao} jaPagos={ind.jaPagos} />
+        <ValoresPorClassificacao resumo={ind.entradas} />
+      </div>
 
       <section className="mt-8">
         <div className="mb-3 flex items-end justify-between gap-3">
@@ -207,6 +216,63 @@ function DistribuicaoSituacao({
           <span className="text-muted-foreground">({formatPercent(pctPagos)})</span>
         </span>
       </div>
+    </section>
+  );
+}
+
+const COR_GRUPO: Record<GrupoClassificacao, string> = {
+  contratuais: "bg-info",
+  atrasados: "bg-money",
+  sucumbencia: "bg-warning",
+  sem_classificacao: "bg-muted-foreground/40",
+};
+
+/**
+ * Valores por classificação das entradas — mesmo cálculo (`resumirEntradas`)
+ * usado no perfil de cada cliente. Reclassificar uma entrada move o valor de
+ * grupo; o total nunca muda nem duplica.
+ */
+function ValoresPorClassificacao({ resumo }: { resumo: ResumoEntradas }) {
+  return (
+    <section
+      className="rounded-xl border border-border bg-card p-5"
+      aria-label="Valores por classificação"
+    >
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide">Valores por classificação</h2>
+        <p className="text-xs text-muted-foreground">{resumo.quantidade} entrada(s)</p>
+      </div>
+      <div
+        className="flex h-4 w-full overflow-hidden rounded-full bg-muted"
+        role="img"
+        aria-label={GRUPOS_CLASSIFICACAO.map(
+          (g) => `${ROTULO_GRUPO[g]} ${formatBRL(resumo.porClassificacao[g].valor)}`,
+        ).join(", ")}
+      >
+        {GRUPOS_CLASSIFICACAO.map((g) => (
+          <div
+            key={g}
+            className={`h-full ${COR_GRUPO[g]}`}
+            style={{
+              width: `${resumo.total ? (resumo.porClassificacao[g].valor / resumo.total) * 100 : 0}%`,
+            }}
+          />
+        ))}
+      </div>
+      <ul className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
+        {GRUPOS_CLASSIFICACAO.map((g) => (
+          <li key={g} className="flex items-center gap-2">
+            <span className={`size-2.5 rounded-full ${COR_GRUPO[g]}`} aria-hidden />
+            {ROTULO_GRUPO[g]}
+            <strong className="ml-auto tabular">
+              {formatBRL(resumo.porClassificacao[g].valor)}
+            </strong>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 border-t border-border pt-2 text-right text-sm">
+        Total: <strong className="tabular">{formatBRL(resumo.total)}</strong>
+      </p>
     </section>
   );
 }

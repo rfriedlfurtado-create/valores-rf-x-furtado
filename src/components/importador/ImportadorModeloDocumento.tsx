@@ -62,18 +62,73 @@ function Contador({
   );
 }
 
-function TabelaItens({ itens }: { itens: ItemPlano[] }) {
+function ValoresDoItem({
+  item,
+  onAlternarForcar,
+}: {
+  item: ItemPlano;
+  onAlternarForcar?: ((numeroLinha: number) => void) | undefined;
+}) {
+  if (item.entradas.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <ul className="space-y-1">
+      {item.entradas.map((e) => (
+        <li key={e.numeroLinha} className="whitespace-nowrap">
+          <span className="tabular">{formatBRL(e.valor)}</span>{" "}
+          <span className="text-muted-foreground">(l. {e.numeroLinha})</span>
+          {e.status === "ja_registrada" ? (
+            <span className="block text-amber-800 dark:text-amber-300">
+              já registrado — não duplica
+              {onAlternarForcar ? (
+                <button
+                  type="button"
+                  className="ml-1 underline underline-offset-2"
+                  onClick={() => onAlternarForcar(e.numeroLinha)}
+                >
+                  registrar mesmo assim
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {e.status === "forcada" ? (
+            <span className="block text-blue-800 dark:text-blue-300">
+              confirmado como valor novo
+              {onAlternarForcar ? (
+                <button
+                  type="button"
+                  className="ml-1 underline underline-offset-2"
+                  onClick={() => onAlternarForcar(e.numeroLinha)}
+                >
+                  desfazer
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TabelaItens({
+  itens,
+  onAlternarForcar,
+}: {
+  itens: ItemPlano[];
+  onAlternarForcar?: ((numeroLinha: number) => void) | undefined;
+}) {
   if (itens.length === 0) {
     return <p className="py-4 text-center text-xs text-muted-foreground">Nenhum registro.</p>;
   }
   return (
-    <div className="max-h-72 overflow-auto rounded-lg border border-border">
+    <div className="max-h-80 overflow-auto rounded-lg border border-border">
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-muted text-left">
           <tr>
-            <th className="px-2 py-1.5 font-semibold">Linha</th>
-            <th className="px-2 py-1.5 font-semibold">Nome</th>
+            <th className="px-2 py-1.5 font-semibold">Linha(s)</th>
+            <th className="px-2 py-1.5 font-semibold">Cliente</th>
             <th className="px-2 py-1.5 font-semibold">Situação</th>
+            <th className="px-2 py-1.5 font-semibold">Valores</th>
             <th className="px-2 py-1.5 font-semibold">Ação</th>
             <th className="px-2 py-1.5 font-semibold">Detalhe</th>
           </tr>
@@ -81,18 +136,22 @@ function TabelaItens({ itens }: { itens: ItemPlano[] }) {
         <tbody>
           {itens.map((item) => (
             <tr key={item.linha.numeroLinha} className="border-t border-border align-top">
-              <td className="px-2 py-1.5 tabular">{item.linha.numeroLinha}</td>
+              <td className="px-2 py-1.5 tabular">
+                {item.linhas.map((l) => l.numeroLinha).join(", ")}
+              </td>
               <td className="px-2 py-1.5">
                 <span className="font-medium">{item.linha.nome || "—"}</span>
-                {item.linha.cpf ? (
-                  <span className="block text-muted-foreground">{item.linha.cpf}</span>
+                {item.linhas.find((l) => l.cpf)?.cpf ? (
+                  <span className="block text-muted-foreground">
+                    {item.linhas.find((l) => l.cpf)?.cpf}
+                  </span>
                 ) : null}
               </td>
               <td className="px-2 py-1.5 whitespace-nowrap">
-                {item.linha.situacao ? rotuloSituacao(item.linha.situacao) : "—"}
-                {item.linha.valor != null ? (
-                  <span className="block text-muted-foreground">{formatBRL(item.linha.valor)}</span>
-                ) : null}
+                {item.situacao ? rotuloSituacao(item.situacao) : "—"}
+              </td>
+              <td className="px-2 py-1.5">
+                <ValoresDoItem item={item} onAlternarForcar={onAlternarForcar} />
               </td>
               <td className="px-2 py-1.5">
                 <Badge variant="outline" className={`border-0 ${ROTULO_ACAO[item.acao].classe}`}>
@@ -142,7 +201,10 @@ function descreverResultado(res: ResultadoImportacaoModelo): string {
     `${res.novosClientes} novo(s)`,
     `${res.existentesAtualizados + res.semAlteracao} existente(s)`,
     `${res.movidosParaJaPagos} movido(s) para Já Pagos`,
+    `${res.pagamentosRegistrados} valor(es) registrado(s)`,
   ];
+  if (res.valoresJaRegistrados)
+    partes.push(`${res.valoresJaRegistrados} valor(es) já existente(s) não duplicado(s)`);
   if (res.naoEncontrados.length) partes.push(`${res.naoEncontrados.length} não encontrado(s)`);
   if (res.naoImportadosPorErro.length)
     partes.push(`${res.naoImportadosPorErro.length} não importado(s) por erro`);
@@ -160,6 +222,17 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
   const [arrastando, setArrastando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("problemas");
   const [resultado, setResultado] = useState<ResultadoImportacaoModelo | null>(null);
+  /** Linhas cujo valor o usuário confirmou como entrada nova (igual a uma já registrada). */
+  const [forcarLinhas, setForcarLinhas] = useState<ReadonlySet<number>>(new Set());
+
+  function alternarForcar(numeroLinha: number) {
+    setForcarLinhas((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(numeroLinha)) novo.delete(numeroLinha);
+      else novo.add(numeroLinha);
+      return novo;
+    });
+  }
 
   const plano: PlanoModelo | null = useMemo(() => {
     if (!analise || analise.errosEstrutura.length > 0 || !base) return null;
@@ -169,13 +242,15 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
       clientes: base.clientes,
       variacoes,
       pagamentos,
+      forcarLinhas,
     });
-  }, [analise, base, variacoes]);
+  }, [analise, base, variacoes, forcarLinhas]);
 
   function limpar() {
     setArquivo(null);
     setAnalise(null);
     setFiltro("problemas");
+    setForcarLinhas(new Set());
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -222,7 +297,13 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
   const itensVisiveis = plano
     ? filtro === "todos"
       ? plano.itens
-      : plano.itens.filter((i) => i.acao === "erro" || i.acao === "nao_encontrado" || i.aviso)
+      : plano.itens.filter(
+          (i) =>
+            i.acao === "erro" ||
+            i.acao === "nao_encontrado" ||
+            i.aviso ||
+            i.entradas.some((e) => e.status !== "nova"),
+        )
     : [];
   const temAlgoParaGravar =
     !!plano &&
@@ -316,8 +397,11 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
             </ul>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Contador valor={plano.resumo.total} rotulo="Total de registros" />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Contador
+              valor={plano.resumo.total}
+              rotulo={`Linhas no arquivo · ${plano.resumo.clientes} cliente(s)`}
+            />
             <Contador
               valor={plano.resumo.emTramitacao}
               rotulo={`Em tramitação (${plano.resumo.novos} novos)`}
@@ -328,6 +412,14 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
               destaque="text-green-700 dark:text-green-400"
             />
             <Contador
+              valor={plano.resumo.entradasNovas}
+              rotulo={`Valores a registrar${
+                plano.resumo.entradasJaRegistradas
+                  ? ` (${plano.resumo.entradasJaRegistradas} já registrados)`
+                  : ""
+              }`}
+            />
+            <Contador
               valor={plano.resumo.pagosNaoEncontrados}
               rotulo="Pagos não encontrados"
               destaque={
@@ -336,10 +428,18 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
             />
             <Contador
               valor={plano.resumo.erros}
-              rotulo="Registros com erro"
+              rotulo="Linhas com erro / sem identificação segura"
               destaque={plano.resumo.erros ? "text-red-700 dark:text-red-400" : ""}
             />
           </div>
+
+          {plano.resumo.linhasAgrupadas > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {plano.resumo.linhasAgrupadas} linha(s) repetida(s) do mesmo cliente foram agrupadas:
+              cada cliente terá <strong>um único perfil</strong>, com cada valor registrado como uma
+              entrada separada.
+            </p>
+          ) : null}
 
           <div className="grid gap-2">
             <div className="flex gap-1">
@@ -358,13 +458,14 @@ export function ImportadorModeloDocumento({ onConcluido }: ImportadorModeloDocum
                 Todos os registros
               </Button>
             </div>
-            <TabelaItens itens={itensVisiveis} />
+            <TabelaItens itens={itensVisiveis} onAlternarForcar={alternarForcar} />
           </div>
 
           {plano.resumo.erros + plano.resumo.pagosNaoEncontrados > 0 ? (
             <p className="text-xs text-muted-foreground">
-              Registros com erro e pagos não encontrados <strong>não serão gravados</strong>.
-              Corrija o arquivo e importe novamente — a reimportação não duplica clientes.
+              Linhas com erro, sem identificação segura e pagos não encontrados{" "}
+              <strong>não serão gravados</strong> (nem o cliente, nem os valores). Corrija o arquivo
+              e importe novamente — a reimportação não duplica clientes nem valores.
             </p>
           ) : null}
 
@@ -399,7 +500,7 @@ function ResultadoModelo({ resultado }: { resultado: ResultadoImportacaoModelo }
         <CheckCircle2 className="size-4 text-green-600" aria-hidden />
         Importação concluída
       </p>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Contador valor={resultado.novosClientes} rotulo="Novos clientes" />
         <Contador
           valor={resultado.existentesAtualizados + resultado.semAlteracao}
@@ -407,8 +508,14 @@ function ResultadoModelo({ resultado }: { resultado: ResultadoImportacaoModelo }
         />
         <Contador
           valor={resultado.movidosParaJaPagos}
-          rotulo={`Movidos p/ Já Pagos (${resultado.pagamentosRegistrados} valores)`}
+          rotulo="Movidos p/ Já Pagos"
           destaque="text-green-700 dark:text-green-400"
+        />
+        <Contador
+          valor={resultado.pagamentosRegistrados}
+          rotulo={`Valores registrados${
+            resultado.valoresJaRegistrados ? ` (${resultado.valoresJaRegistrados} já existiam)` : ""
+          }`}
         />
         <Contador valor={resultado.naoEncontrados.length} rotulo="Não encontrados" />
         <Contador valor={resultado.naoImportadosPorErro.length} rotulo="Não importados por erro" />

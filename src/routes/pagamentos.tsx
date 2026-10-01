@@ -15,7 +15,8 @@ import { useSistema } from "@/hooks/useSistema";
 import { formatBRL, formatDate } from "@/lib/format";
 import { normalizarNome } from "@/lib/similarity";
 import { Coins, Receipt } from "lucide-react";
-import { ROTULO_TIPO_PAGAMENTO } from "@/lib/tipos";
+import { ROTULO_CLASSIFICACAO, ROTULO_TIPO_PAGAMENTO } from "@/lib/tipos";
+import { GRUPOS_CLASSIFICACAO, ROTULO_GRUPO } from "@/lib/situacao";
 
 export const Route = createFileRoute("/pagamentos")({
   head: () => ({
@@ -36,6 +37,7 @@ function HistoricoPagamentos() {
   const { base, carregando } = useSistema();
   const [busca, setBusca] = useState("");
   const [tipo, setTipo] = useState("todos");
+  const [classificacao, setClassificacao] = useState("todas");
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
 
@@ -51,12 +53,17 @@ function HistoricoPagamentos() {
         if (!cliente) return false;
         if (termo && !cliente.nome_normalizado.includes(termo)) return false;
         if (tipo !== "todos" && pagamento.tipo !== tipo) return false;
+        if (
+          classificacao !== "todas" &&
+          (pagamento.classificacao ?? "sem_classificacao") !== classificacao
+        )
+          return false;
         if (de && pagamento.data_pagamento < de) return false;
         if (ate && pagamento.data_pagamento > ate) return false;
         return true;
       })
       .sort((a, b) => b.pagamento.data_pagamento.localeCompare(a.pagamento.data_pagamento));
-  }, [base, busca, tipo, de, ate]);
+  }, [base, busca, tipo, classificacao, de, ate]);
 
   const totalFiltrado = linhas.reduce((soma, linha) => soma + linha.pagamento.valor, 0);
 
@@ -89,7 +96,7 @@ function HistoricoPagamentos() {
         <StatCard titulo="Valor total da base" valor={formatBRL(base.indicadores.valorRecebido)} icone={Coins} tom="money" />
       </div>
 
-      <div className="my-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+      <div className="my-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -110,6 +117,19 @@ function HistoricoPagamentos() {
             <SelectItem value="cheque">Cheque</SelectItem>
             <SelectItem value="boleto">Boleto</SelectItem>
             <SelectItem value="outro">Outro</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={classificacao} onValueChange={setClassificacao}>
+          <SelectTrigger className="h-11 lg:w-52" aria-label="Classificação">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as classificações</SelectItem>
+            {GRUPOS_CLASSIFICACAO.map((g) => (
+              <SelectItem key={g} value={g}>
+                {ROTULO_GRUPO[g]}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Input
@@ -139,6 +159,7 @@ function HistoricoPagamentos() {
                 <TableHead className="min-w-52">Cliente</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead>Classificação</TableHead>
                 <TableHead>Observação</TableHead>
                 <TableHead>Cadastrado por</TableHead>
               </TableRow>
@@ -162,6 +183,13 @@ function HistoricoPagamentos() {
                     <Valor valor={pagamento.valor} tamanho="lg" />
                   </TableCell>
                   <TableCell>{ROTULO_TIPO_PAGAMENTO[pagamento.tipo]}</TableCell>
+                  <TableCell>
+                    {pagamento.classificacao ? (
+                      ROTULO_CLASSIFICACAO[pagamento.classificacao]
+                    ) : (
+                      <span className="text-muted-foreground">Sem classificação</span>
+                    )}
+                  </TableCell>
                   <TableCell className="max-w-56 truncate text-muted-foreground">
                     {pagamento.observacao ?? "—"}
                   </TableCell>

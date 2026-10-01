@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { EntradasDeValores } from "@/components/EntradasDeValores";
 import { useSistema } from "@/hooks/useSistema";
 import { arquivarCliente, atualizarCliente, reativarCliente } from "@/lib/acoes";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -126,7 +127,7 @@ function PerfilCliente() {
           icone={Coins}
           tom="money"
         />
-        <StatCard titulo="Quantidade de pagamentos" valor={cliente.quantidadePagamentos} icone={Receipt} />
+        <StatCard titulo="Entradas de valores" valor={cliente.quantidadePagamentos} icone={Receipt} />
         <StatCard
           titulo="Último pagamento"
           valor={formatDate(cliente.ultimoPagamento)}
@@ -141,48 +142,7 @@ function PerfilCliente() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <section>
-          <h2 className="mb-3 text-lg font-bold tracking-tight">Histórico de pagamentos</h2>
-          {pagamentos.length === 0 ? (
-            <SecaoVazia
-              titulo="Nenhum pagamento registrado"
-              descricao="Use o botão Registrar pagamento para começar o histórico."
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Data</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Observação</TableHead>
-                    <TableHead>Cadastrado por</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagamentos.map((pagamento) => (
-                    <TableRow key={pagamento.id}>
-                      <TableCell className="tabular font-medium">
-                        {formatDate(pagamento.data_pagamento)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Valor valor={pagamento.valor} tamanho="lg" />
-                      </TableCell>
-                      <TableCell>{ROTULO_TIPO_PAGAMENTO[pagamento.tipo]}</TableCell>
-                      <TableCell className="max-w-56 truncate text-muted-foreground">
-                        {pagamento.observacao ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {pagamento.usuario_cadastro ?? "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </section>
+        <EntradasDeValores entradas={pagamentos} />
 
         <aside className="space-y-4">
           <Card className="gap-3 p-5">

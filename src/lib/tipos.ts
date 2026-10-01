@@ -27,6 +27,26 @@ export interface Cliente {
   updated_at: string;
 }
 
+/**
+ * Classificação de uma ENTRADA financeira (cada pagamento tem a sua).
+ * Gravada em `pagamentos.classificacao` (constraint pagamentos_classificacao_check).
+ * `null` = ainda não classificada.
+ */
+export type ClassificacaoEntrada = "contratuais" | "atrasados" | "sucumbencia";
+
+export const CLASSIFICACOES_ENTRADA: { value: ClassificacaoEntrada; label: string }[] = [
+  { value: "contratuais", label: "Contratuais" },
+  { value: "atrasados", label: "Atrasados" },
+  { value: "sucumbencia", label: "Sucumbência" },
+];
+
+export const ROTULO_CLASSIFICACAO: Record<ClassificacaoEntrada, string> = {
+  contratuais: "Contratuais",
+  atrasados: "Atrasados",
+  sucumbencia: "Sucumbência",
+};
+
+/** Entrada financeira: um registro individual de valor vinculado ao cliente. */
 export interface Pagamento {
   id: string;
   cliente_id: string;
@@ -36,6 +56,11 @@ export interface Pagamento {
   observacao: string | null;
   usuario_cadastro: string | null;
   created_at: string;
+  classificacao: ClassificacaoEntrada | null;
+  /** Chave anti-reimportação (só para entradas vindas do Modelo Documento). */
+  chave_importacao: string | null;
+  /** Linha do arquivo de origem (rastreabilidade/ordem). */
+  linha_importacao: number | null;
 }
 
 export interface VariacaoNome {

@@ -244,10 +244,13 @@ export type Database = {
       }
       pagamentos: {
         Row: {
+          chave_importacao: string | null
+          classificacao: string | null
           cliente_id: string
           created_at: string
           data_pagamento: string
           id: string
+          linha_importacao: number | null
           observacao: string | null
           tipo: string
           updated_at: string
@@ -255,10 +258,13 @@ export type Database = {
           valor: number
         }
         Insert: {
+          chave_importacao?: string | null
+          classificacao?: string | null
           cliente_id: string
           created_at?: string
           data_pagamento: string
           id?: string
+          linha_importacao?: number | null
           observacao?: string | null
           tipo?: string
           updated_at?: string
@@ -266,10 +272,13 @@ export type Database = {
           valor: number
         }
         Update: {
+          chave_importacao?: string | null
+          classificacao?: string | null
           cliente_id?: string
           created_at?: string
           data_pagamento?: string
           id?: string
+          linha_importacao?: number | null
           observacao?: string | null
           tipo?: string
           updated_at?: string

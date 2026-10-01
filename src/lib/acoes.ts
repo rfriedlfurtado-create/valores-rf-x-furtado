@@ -16,7 +16,7 @@ import {
 } from "./modeloDocumento";
 import type { Json } from "@/integrations/supabase/types";
 
-import type { Cliente, TipoPagamento } from "./tipos";
+import type { ClassificacaoEntrada, Cliente, TipoPagamento } from "./tipos";
 
 function erro(message: string): never {
   throw new Error(message);
@@ -86,6 +86,22 @@ export interface NovoPagamento {
   tipo: TipoPagamento;
   observacao?: string | null;
   usuario_cadastro?: string | null;
+}
+
+/**
+ * Classifica UMA entrada financeira (Contratuais/Atrasados/Sucumbência).
+ * Só muda a classificação daquela entrada: o valor nunca é duplicado nem
+ * alterado, e as demais entradas do cliente não são tocadas.
+ */
+export async function classificarEntrada(
+  entradaId: string,
+  classificacao: ClassificacaoEntrada | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("pagamentos")
+    .update({ classificacao })
+    .eq("id", entradaId);
+  if (error) erro(error.message);
 }
 
 export async function registrarPagamento(entrada: NovoPagamento): Promise<void> {
@@ -242,6 +258,8 @@ export interface ResultadoImportacaoModelo {
   semAlteracao: number;
   movidosParaJaPagos: number;
   pagamentosRegistrados: number;
+  /** Entradas que já existiam (reimportação) e não foram duplicadas. */
+  valoresJaRegistrados: number;
   naoEncontrados: ItemPlano[];
   naoImportadosPorErro: ItemPlano[];
 }
@@ -272,13 +290,20 @@ export async function executarPlanoModelo(params: {
   });
   if (error) erro(error.message);
 
-  const r = (data ?? {}) as { novos?: number; atualizados?: number; movidos?: number; valores?: number };
+  const r = (data ?? {}) as {
+    novos?: number;
+    atualizados?: number;
+    movidos?: number;
+    valores?: number;
+    valores_ignorados?: number;
+  };
   return {
     novosClientes: r.novos ?? 0,
     existentesAtualizados: r.atualizados ?? 0,
     semAlteracao,
     movidosParaJaPagos: r.movidos ?? 0,
     pagamentosRegistrados: r.valores ?? 0,
+    valoresJaRegistrados: (r.valores_ignorados ?? 0) + params.plano.resumo.entradasJaRegistradas,
     naoEncontrados,
     naoImportadosPorErro,
   };

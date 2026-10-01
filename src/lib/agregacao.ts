@@ -43,7 +43,7 @@ export function agregarBase(
   const idsVigentes = new Set(clientes.map((c) => c.id));
 
   const pagamentos = pagamentosBrutos
-    .map((p) => ({ ...p, valor: numero(p.valor) }))
+    .map((p) => ({ ...p, valor: numero(p.valor), classificacao: p.classificacao ?? null }))
     .filter((p) => idsVigentes.has(p.cliente_id));
 
   const pagamentosPorCliente = new Map<string, Pagamento[]>();
@@ -51,6 +51,17 @@ export function agregarBase(
     const lista = pagamentosPorCliente.get(pagamento.cliente_id) ?? [];
     lista.push(pagamento);
     pagamentosPorCliente.set(pagamento.cliente_id, lista);
+  }
+
+  // Ordem estável das entradas no perfil: data, momento do registro e linha do arquivo.
+  for (const lista of pagamentosPorCliente.values()) {
+    lista.sort(
+      (a, b) =>
+        a.data_pagamento.localeCompare(b.data_pagamento) ||
+        a.created_at.localeCompare(b.created_at) ||
+        (a.linha_importacao ?? 0) - (b.linha_importacao ?? 0) ||
+        a.id.localeCompare(b.id),
+    );
   }
 
   const comTotais: ClienteComTotais[] = clientes.map((cliente) => {
@@ -65,11 +76,7 @@ export function agregarBase(
     };
   });
 
-  const indicadores = calcularIndicadores(
-    comTotais,
-    new Map([...pagamentosPorCliente].map(([id, lista]) => [id, lista.map((p) => p.valor)])),
-    agora,
-  );
+  const indicadores = calcularIndicadores(comTotais, pagamentosPorCliente, agora);
 
   return {
     clientes: comTotais,

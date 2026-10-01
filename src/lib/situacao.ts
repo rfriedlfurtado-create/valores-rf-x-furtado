@@ -21,7 +21,7 @@
  * Módulo puro (sem imports de runtime do app) para poder ser testado isoladamente.
  */
 
-import type { StatusCliente } from "./tipos";
+import { ROTULO_CLASSIFICACAO, type ClassificacaoEntrada, type StatusCliente } from "./tipos";
 
 export type Situacao = "EM_TRAMITACAO" | "PAGO" | "ARQUIVADO";
 
@@ -111,6 +111,58 @@ export function correspondeBusca(
 // Indicadores — calculados uma única vez, a partir da mesma lista
 // ---------------------------------------------------------------------------
 
+/** Entrada financeira mínima para cálculos (uma linha de `pagamentos`). */
+export interface EntradaMinima {
+  valor: number;
+  classificacao: ClassificacaoEntrada | null;
+}
+
+export type GrupoClassificacao = ClassificacaoEntrada | "sem_classificacao";
+
+export const GRUPOS_CLASSIFICACAO: GrupoClassificacao[] = [
+  "contratuais",
+  "atrasados",
+  "sucumbencia",
+  "sem_classificacao",
+];
+
+export const ROTULO_GRUPO: Record<GrupoClassificacao, string> = {
+  ...ROTULO_CLASSIFICACAO,
+  sem_classificacao: "Sem classificação",
+};
+
+/** Frase exibida no perfil: "Existem 3 valores registrados para este cliente." */
+export function fraseQuantidadeEntradas(quantidade: number): string {
+  if (quantidade === 0) return "Nenhum valor registrado para este cliente.";
+  if (quantidade === 1) return "Existe 1 valor registrado para este cliente.";
+  return `Existem ${quantidade} valores registrados para este cliente.`;
+}
+
+export interface ResumoEntradas {
+  quantidade: number;
+  total: number;
+  porClassificacao: Record<GrupoClassificacao, { quantidade: number; valor: number }>;
+}
+
+/**
+ * Resumo de um conjunto de entradas. Usado tanto no perfil do cliente
+ * quanto nos indicadores globais — a mesma conta em todos os lugares.
+ * Cada entrada é somada uma única vez, na sua própria classificação.
+ */
+export function resumirEntradas(entradas: readonly EntradaMinima[]): ResumoEntradas {
+  const porClassificacao = Object.fromEntries(
+    GRUPOS_CLASSIFICACAO.map((g) => [g, { quantidade: 0, valor: 0 }]),
+  ) as ResumoEntradas["porClassificacao"];
+  let total = 0;
+  for (const e of entradas) {
+    const grupo = porClassificacao[e.classificacao ?? "sem_classificacao"];
+    grupo.quantidade += 1;
+    grupo.valor = arredondar(grupo.valor + e.valor);
+    total = arredondar(total + e.valor);
+  }
+  return { quantidade: entradas.length, total, porClassificacao };
+}
+
 export interface Indicadores {
   /** Clientes vigentes (em tramitação + pagos). */
   totalClientes: number;
@@ -127,6 +179,10 @@ export interface Indicadores {
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
+  /** Valores por classificação (Contratuais/Atrasados/Sucumbência/sem). */
+  entradas: ResumoEntradas;
+  /** Clientes com mais de uma entrada financeira. */
+  clientesComVariasEntradas: number;
 }
 
 export function calcularIndicadores(
@@ -134,7 +190,7 @@ export function calcularIndicadores(
     id: string;
     data_importacao: string | null;
   })[],
-  valoresPorCliente: Map<string, number[]>,
+  entradasPorCliente: Map<string, readonly EntradaMinima[]>,
   agora: Date = new Date(),
 ): Indicadores {
   const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
@@ -145,12 +201,16 @@ export function calcularIndicadores(
   let pagosSemValor = 0;
   let valorRecebidoDePagos = 0;
   let importadosNoMes = 0;
+  let clientesComVariasEntradas = 0;
+  const todasEntradas: EntradaMinima[] = [];
 
   for (const cliente of clientes) {
     const situacao = situacaoDoCliente(cliente);
     if (situacao === "ARQUIVADO") continue;
-    const valores = valoresPorCliente.get(cliente.id) ?? [];
-    const soma = valores.reduce((s, v) => s + v, 0);
+    const valores = entradasPorCliente.get(cliente.id) ?? [];
+    const soma = valores.reduce((s, e) => s + e.valor, 0);
+    todasEntradas.push(...valores);
+    if (valores.length > 1) clientesComVariasEntradas += 1;
     valorRecebido += soma;
     quantidadePagamentos += valores.length;
     if (situacao === "PAGO") {
@@ -176,6 +236,8 @@ export function calcularIndicadores(
     pagosSemValor,
     valorRecebidoDePagos: arredondar(valorRecebidoDePagos),
     importadosNoMes,
+    entradas: resumirEntradas(todasEntradas),
+    clientesComVariasEntradas,
   };
 }
 

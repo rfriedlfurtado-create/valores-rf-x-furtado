@@ -1,178 +1,309 @@
 /**
- * Testes do Modelo Documento: gerador ↔ parser (mesmo schema) e planejador.
+ * Modelo Documento: gerador ↔ parser (mesmo schema), agrupamento de
+ * linhas por cliente, entradas financeiras e anti-reimportação.
  * Rodar: bun test
  */
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as XLSX from "xlsx";
 
 import {
   analisarWorkbookModelo,
-  MARCA_PAGAMENTO_MODELO,
+  chaveEntrada,
+  montarPayloadImportacao,
   montarWorkbookModelo,
   planejarImportacaoModelo,
   type ClienteBaseModelo,
+  type ItemPlano,
+  type PagamentoBaseModelo,
 } from "@/lib/modeloDocumento";
 
-function assert(condicao: unknown, mensagem: string) {
-  if (!condicao) throw new Error(`Falhou: ${mensagem}`);
+type Celula = string | number | null;
+
+function analisar(linhas: Celula[][]) {
+  const wb = montarWorkbookModelo();
+  XLSX.utils.sheet_add_aoa(wb.Sheets["Clientes"]!, linhas, { origin: "A2" });
+  const lido = XLSX.read(XLSX.write(wb, { type: "array", bookType: "xlsx" }), {
+    type: "array",
+    cellDates: true,
+  });
+  return analisarWorkbookModelo(lido);
 }
 
-test("gerador, parser e planejador do Modelo Documento", () => {
-  const wb = montarWorkbookModelo();
-  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const vazio = analisarWorkbookModelo(XLSX.read(buf, { type: "array", cellDates: true }));
-  expect(Boolean(vazio.versao === "ATLAS_CLIENTES_V1")).toBe(true); // "versão lida do arquivo gerado"
-  expect(
-    Boolean(vazio.errosEstrutura.length === 1 && /nenhum cliente/.test(vazio.errosEstrutura[0]!)),
-  ).toBe(true); // "modelo vazio: só erro 'nenhum cliente'"
-
-  const ws = wb.Sheets["Clientes"]!;
-  XLSX.utils.sheet_add_aoa(
-    ws,
-    [
-      ["  joão  da SILVA ", "000.000.000-00", "0000000-00.0000.0.00.0000", "NÃO PAGO", ""],
-      ["Maria Souza", "111.111.111-11", "", "PAGO", "1.500,00"],
-      ["Carlos Oliveira", "", "123", "nao pago", ""],
-      ["Ana Pereira", null, "", "PAGO", null],
-      [],
-      ["Fulano Desconhecido", "", "", "PAGO", ""],
-      ["", "", "", "PAGO", ""],
-      ["Beltrano", "123", "", "TALVEZ", "abc"],
-      ["Carlos Oliveira", "", "", "PAGO", ""],
-      ["Pedro Numerico", 1234567890, "", "NÃO PAGO", 250.5],
-    ],
-    { origin: "A2" },
-  );
-  const buf2 = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const an = analisarWorkbookModelo(XLSX.read(buf2, { type: "array", cellDates: true }));
-  expect(Boolean(an.errosEstrutura.length === 0)).toBe(true); // "estrutura válida"
-  expect(Boolean(an.linhas.length === 9)).toBe(true); // "9 linhas (vazia ignorada)"
-  const L = (n: number) => an.linhas.find((l) => l.numeroLinha === n)!;
-  expect(Boolean(L(2).nome === "joão da SILVA" && L(2).situacao === "NAO_PAGO")).toBe(true); // "trim + situação NÃO PAGO"
-  expect(Boolean(L(3).valor === 1500)).toBe(true); // "valor BRL 1.500,00"
-  expect(Boolean(L(8).erros.length === 1)).toBe(true); // "linha sem nome -> erro"
-  assert(
-    L(9).erros.length === 3,
-    "CPF, situação e valor inválidos -> 3 erros: " + L(9).erros.join("|"),
-  );
-  expect(Boolean(L(10).erros.some((e) => /duplicado/.test(e)))).toBe(true); // "duplicidade no arquivo"
-  expect(Boolean(L(11).cpfNormalizado === "01234567890" && L(11).valor === 250.5)).toBe(true); // "CPF numérico com zero à esquerda"
-
-  const clientes: ClienteBaseModelo[] = [
-    {
-      id: "m",
-      nome: "MARIA SOUZA",
-      nome_normalizado: "maria souza",
-      cpf: null,
-      status: "ativo",
-      numero_processo: null,
-    },
-    {
-      id: "a",
-      nome: "Ana Pereira",
-      nome_normalizado: "ana pereira",
-      cpf: "99999999999",
-      status: "ativo",
-      numero_processo: null,
-    },
-    {
-      id: "j",
-      nome: "Joao da Silva",
-      nome_normalizado: "joao da silva",
-      cpf: "00000000000",
-      status: "ativo",
-      numero_processo: "x",
-    },
-    {
-      id: "f1",
-      nome: "Fulano Desconhecid",
-      nome_normalizado: "fulano desconhecid",
-      cpf: null,
-      status: "ativo",
-    },
-  ];
-  const plano = planejarImportacaoModelo({
+function planejar(
+  linhas: Celula[][],
+  clientes: ClienteBaseModelo[] = [],
+  pagamentos: PagamentoBaseModelo[] = [],
+  forcarLinhas?: Set<number>,
+) {
+  const an = analisar(linhas);
+  expect(an.errosEstrutura).toEqual([]);
+  return planejarImportacaoModelo({
     linhas: an.linhas,
     clientes,
     variacoes: [],
-    pagamentos: [],
+    pagamentos,
+    forcarLinhas,
   });
-  const A = (n: number) => plano.itens.find((i) => i.linha.numeroLinha === n)!;
-  expect(Boolean(A(2).acao === "sem_alteracao" && A(2).clienteId === "j")).toBe(true); // "João existente por CPF, sem duplicar"
-  expect(
-    Boolean(
-      A(3).acao === "marcar_pago" &&
-      A(3).alteracoes.status === "pago" &&
-      A(3).alteracoes.cpf === "111.111.111-11" &&
-      A(3).registrarValor === 1500,
-    ),
-  ).toBe(true); // "Maria → pago + CPF + valor"
-  expect(Boolean(A(4).acao === "criar")).toBe(true); // "Carlos novo"
-  expect(Boolean(A(5).acao === "marcar_pago" && A(5).registrarValor === null)).toBe(true); // "Ana pago sem valor"
-  expect(Boolean(A(7).acao === "nao_encontrado" && !!A(7).aviso)).toBe(true); // "Fulano não encontrado, com sugestão, sem associar"
+}
 
-  const clientes2 = clientes.map((c) =>
-    c.id === "m"
-      ? { ...c, status: "pago", cpf: "111.111.111-11" }
-      : c.id === "a"
-        ? { ...c, status: "pago" }
-        : c,
-  );
-  clientes2.push({
-    id: "c",
-    nome: "Carlos Oliveira",
-    nome_normalizado: "carlos oliveira",
-    cpf: null,
-    status: "ativo",
-    numero_processo: "123",
-  });
-  clientes2.push({
-    id: "p",
-    nome: "Pedro Numerico",
-    nome_normalizado: "pedro numerico",
-    cpf: "012.345.678-90",
-    status: "ativo",
-    numero_processo: null,
-  });
-  const plano2 = planejarImportacaoModelo({
-    linhas: an.linhas,
-    clientes: clientes2,
-    variacoes: [],
-    pagamentos: [{ cliente_id: "m", valor: 1500, observacao: MARCA_PAGAMENTO_MODELO }],
-  });
-  expect(Boolean(plano2.resumo.novos === 0)).toBe(true); // "reimportação não cria ninguém"
-  expect(
-    Boolean(
-      plano2.itens.filter((i) => i.acao === "marcar_pago" || i.acao === "atualizar").length === 0,
-    ),
-  ).toBe(true); // "reimportação sem alterações"
+const doCliente = (plano: { itens: ItemPlano[] }, nome: RegExp) =>
+  plano.itens.find((i) => nome.test(i.linha.nome))!;
 
-  const ruim = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    ruim,
-    XLSX.utils.aoa_to_sheet([
-      ["Nome", "CPF", "Status"],
-      ["x", "", "PAGO"],
-    ]),
-    "A",
-  );
-  const r = analisarWorkbookModelo(ruim);
-  expect(Boolean(r.errosEstrutura.length > 0 && r.linhas.length === 0)).toBe(true); // "arquivo fora do modelo é bloqueado"
+const cli = (p: Partial<ClienteBaseModelo> & { id: string; nome: string }): ClienteBaseModelo => ({
+  nome_normalizado: p.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(),
+  cpf: null,
+  numero_processo: null,
+  status: "ativo",
+  ...p,
+});
 
-  const plano3 = planejarImportacaoModelo({
-    linhas: [{ ...L(5), cpf: null, cpfNormalizado: null }],
-    clientes: [
-      ...clientes,
-      {
-        id: "a2",
-        nome: "Ana Pereira",
-        nome_normalizado: "ana pereira",
-        cpf: null,
-        status: "ativo",
-      },
-    ],
-    variacoes: [],
-    pagamentos: [],
+describe("schema e validação", () => {
+  test("o modelo gerado é reconhecido pelo importador (mesma versão)", () => {
+    const wb = montarWorkbookModelo();
+    const an = analisarWorkbookModelo(
+      XLSX.read(XLSX.write(wb, { type: "array", bookType: "xlsx" }), { type: "array" }),
+    );
+    expect(an.versao).toBe("ATLAS_CLIENTES_V1");
+    expect(an.errosEstrutura).toEqual(["O arquivo não possui nenhum cliente preenchido."]);
   });
-  expect(Boolean(plano3.itens[0]!.acao === "nao_encontrado")).toBe(true); // "homônimos sem CPF -> revisão, não associa"
+
+  test("normalização e erros de linha", () => {
+    const an = analisar([
+      ["  joão  da SILVA ", "000.000.000-00", "", "NÃO PAGO", ""],
+      ["Maria", "", "", "PAGO", "1.500,00"],
+      [],
+      ["", "", "", "PAGO", ""],
+      ["Beltrano", "123", "", "TALVEZ", "abc"],
+      ["Pedro", 1234567890, "", "nao pago", 250.5],
+    ]);
+    const L = (n: number) => an.linhas.find((l) => l.numeroLinha === n)!;
+    expect(an.linhas.length).toBe(5);
+    expect(L(2).nome).toBe("joão da SILVA");
+    expect(L(3).valor).toBe(1500);
+    expect(L(5).erros.length).toBe(1);
+    expect(L(6).erros.length).toBe(3);
+    expect(L(7).cpfNormalizado).toBe("01234567890");
+    expect(L(7).situacao).toBe("NAO_PAGO");
+  });
+
+  test("arquivo fora do modelo é bloqueado", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["Nome", "Status"],
+        ["x", "PAGO"],
+      ]),
+      "A",
+    );
+    const an = analisarWorkbookModelo(wb);
+    expect(an.errosEstrutura.length).toBeGreaterThan(0);
+    expect(an.linhas).toEqual([]);
+  });
+});
+
+describe("1 cliente = 1 perfil, N entradas", () => {
+  test("três linhas do mesmo cliente viram um único cliente com três entradas", () => {
+    const plano = planejar([
+      ["João da Silva", "", "", "NÃO PAGO", "1.000,00"],
+      ["JOÃO  DA SILVA", "", "", "NÃO PAGO", "3.500,00"],
+      ["joao da silva", "", "", "NÃO PAGO", "800,00"],
+    ]);
+    expect(plano.itens.length).toBe(1);
+    const item = plano.itens[0]!;
+    expect(item.acao).toBe("criar");
+    expect(item.linhas.map((l) => l.numeroLinha)).toEqual([2, 3, 4]);
+    expect(item.entradas.map((e) => [e.valor, e.chave, e.status])).toEqual([
+      [1000, "v100000#1", "nova"],
+      [3500, "v350000#1", "nova"],
+      [800, "v80000#1", "nova"],
+    ]);
+    expect(plano.resumo.novos).toBe(1);
+    expect(plano.resumo.linhasAgrupadas).toBe(2);
+    expect(plano.resumo.entradasNovas).toBe(3);
+    // payload: 1 cliente, 3 entradas (nunca somadas)
+    const payload = montarPayloadImportacao(plano);
+    expect(payload.length).toBe(1);
+    expect(payload[0]!.entradas.map((e) => e.valor)).toEqual([1000, 3500, 800]);
+  });
+
+  test("valores iguais legítimos no mesmo arquivo são entradas distintas", () => {
+    const plano = planejar([
+      ["Ana", "", "", "NÃO PAGO", "1000"],
+      ["Ana", "", "", "NÃO PAGO", "1000"],
+    ]);
+    expect(plano.itens[0]!.entradas.map((e) => e.chave)).toEqual(["v100000#1", "v100000#2"]);
+  });
+
+  test("linha sem valor não inventa entrada", () => {
+    const plano = planejar([
+      ["Bia", "", "", "NÃO PAGO", ""],
+      ["Bia", "", "", "NÃO PAGO", "200"],
+    ]);
+    expect(plano.itens[0]!.entradas.length).toBe(1);
+  });
+
+  test("mesmo CPF com grafias diferentes = mesmo cliente", () => {
+    const plano = planejar([
+      ["José Pereira", "111.111.111-11", "", "NÃO PAGO", "10"],
+      ["Jose P. Pereira", "11111111111", "", "NÃO PAGO", "20"],
+    ]);
+    expect(plano.itens.length).toBe(1);
+    expect(plano.itens[0]!.aviso).toMatch(/grafias diferentes/);
+  });
+
+  test("linha sem CPF junta-se ao único CPF do mesmo nome no arquivo", () => {
+    const plano = planejar([
+      ["Carla Dias", "222.222.222-22", "", "NÃO PAGO", "10"],
+      ["Carla Dias", "", "", "NÃO PAGO", "20"],
+    ]);
+    expect(plano.itens.length).toBe(1);
+    expect(plano.itens[0]!.entradas.length).toBe(2);
+  });
+
+  test("situações divergentes no arquivo: o cliente é considerado PAGO", () => {
+    const plano = planejar(
+      [
+        ["Rui", "", "", "NÃO PAGO", "10"],
+        ["Rui", "", "", "PAGO", "20"],
+      ],
+      [cli({ id: "r", nome: "Rui" })],
+    );
+    const item = plano.itens[0]!;
+    expect(item.situacao).toBe("PAGO");
+    expect(item.acao).toBe("marcar_pago");
+    expect(item.alteracoes.status).toBe("pago");
+    expect(item.entradas.length).toBe(2);
+  });
+});
+
+describe("sem identificação segura → revisão, nada gravado, nada perdido", () => {
+  test("nome com 2 CPFs no arquivo + linha sem CPF: só a linha sem CPF vai para revisão", () => {
+    const plano = planejar([
+      ["Paulo Lima", "333.333.333-33", "", "NÃO PAGO", "10"],
+      ["Paulo Lima", "444.444.444-44", "", "NÃO PAGO", "20"],
+      ["Paulo Lima", "", "", "NÃO PAGO", "30"],
+    ]);
+    const criados = plano.itens.filter((i) => i.acao === "criar");
+    expect(criados.length).toBe(2); // CPFs diferentes = pessoas diferentes
+    const revisao = plano.itens.find((i) => i.acao === "erro")!;
+    expect(revisao.linha.numeroLinha).toBe(4);
+    expect(revisao.motivo).toMatch(/Identificação insegura/);
+    expect(
+      montarPayloadImportacao(plano)
+        .flatMap((p) => p.entradas)
+        .map((e) => e.valor),
+    ).toEqual([10, 20]);
+  });
+
+  test("homônimos na base sem CPF: grupo inteiro vai para revisão com todos os valores visíveis", () => {
+    const plano = planejar(
+      [
+        ["Ana Souza", "", "", "NÃO PAGO", "10"],
+        ["Ana Souza", "", "", "NÃO PAGO", "20"],
+      ],
+      [cli({ id: "a1", nome: "Ana Souza" }), cli({ id: "a2", nome: "Ana Souza" })],
+    );
+    expect(plano.itens.length).toBe(1);
+    expect(plano.itens[0]!.acao).toBe("erro");
+    expect(plano.itens[0]!.motivo).toMatch(/Sem identificação segura/);
+    expect(plano.itens[0]!.entradas.map((e) => e.valor)).toEqual([10, 20]);
+    expect(montarPayloadImportacao(plano)).toEqual([]);
+  });
+
+  test("PAGO não encontrado: não cria cliente, sugere parecido sem associar", () => {
+    const plano = planejar(
+      [["Fulano Desconhecido", "", "", "PAGO", "100"]],
+      [cli({ id: "f", nome: "Fulano Desconhecid" })],
+    );
+    expect(plano.itens[0]!.acao).toBe("nao_encontrado");
+    expect(plano.itens[0]!.aviso).toMatch(/Nome parecido/);
+    expect(montarPayloadImportacao(plano)).toEqual([]);
+  });
+});
+
+describe("cliente existente e reimportação", () => {
+  const base = [cli({ id: "j", nome: "João da Silva", status: "ativo" })];
+
+  test("cliente existente não é recriado; novas entradas entram no mesmo perfil", () => {
+    const plano = planejar([["João da Silva", "", "", "NÃO PAGO", "800"]], base, [
+      { cliente_id: "j", valor: 1000, chave_importacao: chaveEntrada(1000, 1) },
+      { cliente_id: "j", valor: 3500, chave_importacao: chaveEntrada(3500, 1) },
+    ]);
+    const item = plano.itens[0]!;
+    expect(item.acao).toBe("atualizar");
+    expect(item.clienteId).toBe("j");
+    expect(item.entradas.map((e) => e.status)).toEqual(["nova"]);
+  });
+
+  test("reimportar o mesmo arquivo não duplica entradas", () => {
+    const arquivo: Celula[][] = [
+      ["João da Silva", "", "", "PAGO", "1000"],
+      ["João da Silva", "", "", "PAGO", "3500"],
+      ["João da Silva", "", "", "PAGO", "800"],
+    ];
+    const jaPago = [cli({ id: "j", nome: "João da Silva", status: "pago" })];
+    const existentes = [1000, 3500, 800].map((v) => ({
+      cliente_id: "j",
+      valor: v,
+      chave_importacao: chaveEntrada(v, 1),
+    }));
+    const plano = planejar(arquivo, jaPago, existentes);
+    expect(plano.itens[0]!.acao).toBe("sem_alteracao");
+    expect(plano.resumo.entradasNovas).toBe(0);
+    expect(plano.resumo.entradasJaRegistradas).toBe(3);
+    expect(montarPayloadImportacao(plano)).toEqual([]);
+  });
+
+  test("valor igual a um já registrado pode ser confirmado como entrada nova", () => {
+    const existentes = [{ cliente_id: "j", valor: 1000, chave_importacao: chaveEntrada(1000, 1) }];
+    const arquivo: Celula[][] = [["João da Silva", "", "", "NÃO PAGO", "1000"]];
+    const normal = planejar(arquivo, base, existentes);
+    expect(normal.itens[0]!.entradas[0]!.status).toBe("ja_registrada");
+    const forcado = planejar(arquivo, base, existentes, new Set([2]));
+    expect(forcado.itens[0]!.entradas[0]!.status).toBe("forcada");
+    expect(forcado.itens[0]!.entradas[0]!.chave).toBe("v100000#2");
+    expect(forcado.itens[0]!.acao).toBe("atualizar");
+  });
+
+  test("NÃO PAGO → PAGO usa o mesmo perfil (sem criar outro)", () => {
+    const plano = planejar([["João da Silva", "", "", "PAGO", ""]], base);
+    expect(plano.itens[0]!.acao).toBe("marcar_pago");
+    expect(plano.itens[0]!.clienteId).toBe("j");
+    expect(montarPayloadImportacao(plano)[0]!.acao).toBe("marcar_pago");
+  });
+
+  test("cliente já pago aparecendo como NÃO PAGO não volta para tramitação", () => {
+    const plano = planejar(
+      [["João da Silva", "", "", "NÃO PAGO", ""]],
+      [cli({ id: "j", nome: "João da Silva", status: "pago" })],
+    );
+    expect(plano.itens[0]!.acao).toBe("sem_alteracao");
+    expect(plano.itens[0]!.aviso).toMatch(/mantido como pago/);
+  });
+
+  test("dois grupos que caem no mesmo cliente da base são unidos", () => {
+    const plano = planejar(
+      [
+        ["João Silva", "555.555.555-55", "", "PAGO", "10"],
+        ["João da Silva", "", "", "PAGO", "20"],
+      ],
+      [cli({ id: "j", nome: "João da Silva", cpf: "555.555.555-55", status: "ativo" })],
+    );
+    const gravaveis = plano.itens.filter((i) => i.acao !== "erro");
+    expect(gravaveis.length).toBe(1);
+    expect(gravaveis[0]!.entradas.length).toBe(2);
+    expect(doCliente(plano, /Jo/).clienteId).toBe("j");
+  });
+});
+
+test("valor de linha em revisão continua visível no plano (não é gravado)", () => {
+  const plano = planejar([
+    ["Paulo Lima", "333.333.333-33", "", "NÃO PAGO", "10"],
+    ["Paulo Lima", "444.444.444-44", "", "NÃO PAGO", "20"],
+    ["Paulo Lima", "", "", "NÃO PAGO", "30"],
+  ]);
+  const revisao = plano.itens.find((i) => i.acao === "erro")!;
+  expect(revisao.entradas.map((e) => e.valor)).toEqual([30]);
+  expect(plano.resumo.entradasNovas).toBe(2);
 });

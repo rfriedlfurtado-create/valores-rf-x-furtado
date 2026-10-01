@@ -326,3 +326,150 @@ d("sincronização global (banco real)", () => {
     expect(consultar("select 1 from configuracoes").length).toBeGreaterThan(0);
   });
 });
+
+d("entradas financeiras por cliente (banco real)", () => {
+  const contar = () =>
+    consultar<{ c: number; p: number }>(
+      "select (select count(*) from clientes)::int c, (select count(*) from pagamentos)::int p",
+    )[0]!;
+  const entradasDe = (nome: string) =>
+    consultar<{
+      id: string;
+      valor: number;
+      classificacao: string | null;
+      chave_importacao: string;
+    }>(
+      `select p.id, p.valor::float as valor, p.classificacao, p.chave_importacao from pagamentos p
+         join clientes c on c.id = p.cliente_id
+        where c.nome_normalizado = '${nome}' order by p.linha_importacao`,
+    );
+
+  test("3 linhas do mesmo cliente → 1 perfil com 3 entradas separadas", () => {
+    psql(urlTeste, "select zerar_sistema()");
+    const { retorno } = importar([
+      ["João da Silva", "", "", "NÃO PAGO", "1.000,00"],
+      ["JOÃO DA SILVA", "", "", "NÃO PAGO", "3.500,00"],
+      ["joao da silva", "", "", "NÃO PAGO", "800,00"],
+    ]);
+    expect(retorno.novos).toBe(1);
+    expect(retorno.valores).toBe(3);
+    expect(contar()).toEqual({ c: 1, p: 3 });
+    expect(entradasDe("joao da silva").map((e) => e.valor)).toEqual([1000, 3500, 800]);
+    const base = carregarBase();
+    expect(base.emTramitacao.length).toBe(1);
+    expect(base.emTramitacao[0]!.quantidadePagamentos).toBe(3);
+    expect(base.indicadores.valorRecebido).toBe(5300);
+    verificarConsistencia(base);
+  });
+
+  test("reimportar o mesmo arquivo não duplica (nem no banco, mesmo forçando o payload)", () => {
+    const antes = contar();
+    importar([
+      ["João da Silva", "", "", "NÃO PAGO", "1.000,00"],
+      ["JOÃO DA SILVA", "", "", "NÃO PAGO", "3.500,00"],
+      ["joao da silva", "", "", "NÃO PAGO", "800,00"],
+    ]);
+    expect(contar()).toEqual(antes);
+    // Defesa no banco: mesmo que um payload repita a chave, a entrada não duplica.
+    const [{ id }] = consultar<{ id: string }>(
+      "select id from clientes where nome_normalizado = 'joao da silva'",
+    );
+    const payload = JSON.stringify([
+      {
+        acao: "atualizar",
+        linha: 2,
+        linhas: [2],
+        cliente_id: id,
+        alteracoes: {},
+        entradas: [{ valor: 1000, chave: "v100000#1", linha: 2 }],
+      },
+    ]);
+    const r = JSON.parse(
+      psql(urlTeste, `select aplicar_importacao_modelo($p$${payload}$p$::jsonb, 't', 't.xlsx', 1)`),
+    );
+    expect(r.valores).toBe(0);
+    expect(r.valores_ignorados).toBe(1);
+    expect(contar()).toEqual(antes);
+  });
+
+  test("classificar cada entrada atualiza os totais por classificação sem duplicar valor", () => {
+    const [e1, e2, e3] = entradasDe("joao da silva");
+    psql(
+      urlTeste,
+      `update pagamentos set classificacao = 'contratuais' where id = '${e1!.id}';
+       update pagamentos set classificacao = 'atrasados'   where id = '${e2!.id}';
+       update pagamentos set classificacao = 'sucumbencia' where id = '${e3!.id}';`,
+    );
+    let ind = carregarBase().indicadores.entradas;
+    expect(ind.porClassificacao.contratuais.valor).toBe(1000);
+    expect(ind.porClassificacao.atrasados.valor).toBe(3500);
+    expect(ind.porClassificacao.sucumbencia.valor).toBe(800);
+    expect(ind.total).toBe(5300);
+
+    // Alterar a classificação move o valor de grupo; o total não muda.
+    psql(urlTeste, `update pagamentos set classificacao = 'atrasados' where id = '${e1!.id}'`);
+    ind = carregarBase().indicadores.entradas;
+    expect(ind.porClassificacao.contratuais.valor).toBe(0);
+    expect(ind.porClassificacao.atrasados.valor).toBe(4500);
+    expect(ind.total).toBe(5300);
+    expect(contar().p).toBe(3);
+  });
+
+  test("classificação inválida é recusada pelo banco", () => {
+    const [e1] = entradasDe("joao da silva");
+    expect(() =>
+      psql(urlTeste, `update pagamentos set classificacao = 'outra' where id = '${e1!.id}'`),
+    ).toThrow(/pagamentos_classificacao_check/);
+  });
+
+  test("cliente existente + 1 valor novo → mesmo perfil, classificações preservadas", () => {
+    const idAntes = consultar<{ id: string }>(
+      "select id from clientes where nome_normalizado = 'joao da silva'",
+    )[0]!.id;
+    // arquivo cumulativo: 3 valores antigos + 1 novo
+    const { retorno } = importar([
+      ["João da Silva", "", "", "NÃO PAGO", "1000"],
+      ["João da Silva", "", "", "NÃO PAGO", "3500"],
+      ["João da Silva", "", "", "NÃO PAGO", "800"],
+      ["João da Silva", "", "", "NÃO PAGO", "250"],
+    ]);
+    expect(retorno.novos).toBe(0);
+    expect(retorno.valores).toBe(1);
+    const entradas = entradasDe("joao da silva");
+    expect(entradas.length).toBe(4);
+    expect(entradas.filter((e) => e.classificacao).length).toBe(3); // nada apagado
+    expect(consultar("select 1 from clientes").length).toBe(1);
+    expect(
+      consultar<{ id: string }>(
+        "select id from clientes where nome_normalizado = 'joao da silva'",
+      )[0]!.id,
+    ).toBe(idAntes);
+  });
+
+  test("NÃO PAGO → PAGO: mesma pasta, mesmas entradas, vai para Já Pagos", () => {
+    const id = consultar<{ id: string }>(
+      "select id from clientes where nome_normalizado = 'joao da silva'",
+    )[0]!.id;
+    importar([["João da Silva", "", "", "PAGO", ""]]);
+    const base = carregarBase();
+    expect(base.jaPagos.map((c) => c.id)).toEqual([id]);
+    expect(base.emTramitacao.length).toBe(0);
+    expect(base.porId.get(id)!.quantidadePagamentos).toBe(4);
+    expect(base.indicadores.entradas.total).toBe(5550);
+    expect(consultar("select 1 from clientes").length).toBe(1);
+    verificarConsistencia(base);
+  });
+
+  test("identificação insegura não grava nada daquele cliente e não perde os demais", () => {
+    const antes = contar();
+    const { plano, retorno } = importar([
+      ["Paulo Lima", "333.333.333-33", "", "NÃO PAGO", "10"],
+      ["Paulo Lima", "444.444.444-44", "", "NÃO PAGO", "20"],
+      ["Paulo Lima", "", "", "NÃO PAGO", "30"],
+    ]);
+    expect(retorno.novos).toBe(2);
+    expect(retorno.valores).toBe(2);
+    expect(plano.resumo.erros).toBe(1);
+    expect(contar()).toEqual({ c: antes.c + 2, p: antes.p + 2 });
+  });
+});
