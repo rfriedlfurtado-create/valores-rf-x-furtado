@@ -266,6 +266,64 @@ function SecaoRecolhivel({ titulo, children }: { titulo: string; children: React
   );
 }
 
+/**
+ * Campo com informação: qualquer texto não vazio. "0", "Não" e "Sem registro"
+ * são informações preenchidas.
+ */
+function campoPreenchido(valor: string | null | undefined): boolean {
+  return valor !== null && valor !== undefined && String(valor).trim() !== "";
+}
+
+/**
+ * Parte inferior do card "Processo ou atendimento": campos sem informação,
+ * recolhidos por padrão. Ao salvar um valor, o campo volta à posição habitual
+ * (lista de preenchidos); ao apagar, retorna para cá.
+ */
+function CamposNaoPreenchidos({
+  campos,
+  todosVazios,
+  renderizar,
+}: {
+  campos: ChaveCampo[];
+  todosVazios: boolean;
+  renderizar: (chave: ChaveCampo) => ReactNode;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const id = useId();
+  if (campos.length === 0) return null;
+  return (
+    <div>
+      {todosVazios ? (
+        <div className="px-5 py-4 text-sm text-muted-foreground">
+          Nenhum campo deste registro está preenchido.
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        aria-controls={id}
+        className="flex w-full items-center justify-between gap-3 bg-muted/30 px-5 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Campos não preenchidos ({campos.length})
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            aberto && "rotate-180",
+          )}
+          aria-hidden
+        />
+        <span className="sr-only">{aberto ? "Recolher" : "Expandir"}</span>
+      </button>
+      <div id={id} hidden={!aberto} className="divide-y divide-border border-t border-border">
+        {campos.map((chave) => renderizar(chave))}
+      </div>
+    </div>
+  );
+}
+
 function Voltar() {
   return (
     <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2">
@@ -594,7 +652,10 @@ function Registros({
                       : rotuloRegistro(atual)
                   }
                 >
-                  {secao.campos.map((chave) => (
+                  {(secao.secao === "processo"
+                    ? secao.campos.filter((c) => campoPreenchido(dados[c]))
+                    : secao.campos
+                  ).map((chave) => (
                     <CampoEditavel
                       key={`${atual.id}-${chave}`}
                       chave={chave}
@@ -610,6 +671,29 @@ function Registros({
                       }
                     />
                   ))}
+                  {secao.secao === "processo" ? (
+                    <CamposNaoPreenchidos
+                      key={`vazios-${atual.id}`}
+                      campos={secao.campos.filter((c) => !campoPreenchido(dados[c]))}
+                      todosVazios={secao.campos.every((c) => !campoPreenchido(dados[c]))}
+                      renderizar={(chave) => (
+                        <CampoEditavel
+                          key={`${atual.id}-${chave}`}
+                          chave={chave}
+                          valor={dados[chave]}
+                          salvar={(v) =>
+                            editarCampo({
+                              entidade: "registro",
+                              id: atual.id,
+                              campo: chave,
+                              valor: v,
+                              registro: dados,
+                            })
+                          }
+                        />
+                      )}
+                    />
+                  ) : null}
                 </Secao>
               ),
             )}
