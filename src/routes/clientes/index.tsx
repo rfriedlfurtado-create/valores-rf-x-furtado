@@ -1,8 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
+import {
+  arquivoParaImportar,
+  ehPlanilha,
+  SobreposicaoSoltar,
+  useSoltarArquivo,
+} from "@/components/SoltarArquivo";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -66,6 +73,16 @@ function Clientes() {
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("nome");
   const [pagina, setPagina] = useState(0);
 
+  // Soltar uma planilha em qualquer ponto da página abre a importação com ela.
+  const arrastando = useSoltarArquivo((arquivo) => {
+    if (!ehPlanilha(arquivo)) {
+      toast.error(`"${arquivo.name}" não é uma planilha Excel (.xlsx ou .xls).`);
+      return;
+    }
+    arquivoParaImportar.definir(arquivo);
+    void navigate({ to: "/importar" });
+  });
+
   const variacoesPorCliente = useMemo(() => {
     const mapa = new Map<string, string[]>();
     for (const variacao of variacoes) {
@@ -117,9 +134,10 @@ function Clientes() {
 
   return (
     <div>
+      <SobreposicaoSoltar visivel={arrastando} />
       <PageHeader
         titulo="Clientes"
-        descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação.`}
+        descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação. Para importar, arraste a planilha para esta página.`}
       >
         <DialogPagamento
           clientes={base.clientes}

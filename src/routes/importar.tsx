@@ -16,10 +16,16 @@ import {
   UserCheck,
   UserPlus,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
+import {
+  arquivoParaImportar,
+  ehPlanilha,
+  SobreposicaoSoltar,
+  useSoltarArquivo,
+} from "@/components/SoltarArquivo";
 import { StatCard } from "@/components/StatCard";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -151,6 +157,10 @@ function ImportarClientes() {
 
   async function aoEscolherArquivo(file: File | undefined) {
     if (!file) return;
+    if (!ehPlanilha(file)) {
+      setErro(`"${file.name}" não é uma planilha Excel. Envie um arquivo .xlsx ou .xls.`);
+      return;
+    }
     setErro(null);
     try {
       const p = lerPlanilha(new Uint8Array(await file.arrayBuffer()));
@@ -168,6 +178,17 @@ function ImportarClientes() {
       if (inputRef.current) inputRef.current.value = "";
     }
   }
+
+  // Arrastar e soltar em qualquer ponto da página (exceto durante a análise/gravação).
+  const ocupado = etapa === "analisando" || etapa === "gravando";
+  const arrastando = useSoltarArquivo((f) => void aoEscolherArquivo(f), !ocupado);
+
+  // Arquivo solto na página CLIENTES: abre direto aqui.
+  useEffect(() => {
+    const pendente = arquivoParaImportar.retirar();
+    if (pendente) void aoEscolherArquivo(pendente);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resumo = useMemo(
     () =>
@@ -236,6 +257,7 @@ function ImportarClientes() {
 
   return (
     <div>
+      <SobreposicaoSoltar visivel={arrastando} />
       <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2">
         <Link to="/clientes">
           <ArrowLeft className="size-4" aria-hidden />
@@ -267,17 +289,15 @@ function ImportarClientes() {
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                void aoEscolherArquivo(e.dataTransfer.files?.[0]);
-              }}
-              className="flex w-full flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-14 text-center transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={cn(
+                "flex w-full flex-col items-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                arrastando ? "border-primary bg-primary/5" : "border-border bg-muted/30",
+              )}
             >
               <FileSpreadsheet className="size-10 text-muted-foreground" aria-hidden />
-              <span className="text-base font-semibold">Selecione ou arraste a planilha Excel</span>
+              <span className="text-base font-semibold">Arraste e solte a planilha Excel aqui</span>
               <span className="text-sm text-muted-foreground">
-                .xlsx ou .xls · a primeira linha deve conter os cabeçalhos
+                ou clique para escolher · .xlsx ou .xls · a primeira linha deve conter os cabeçalhos
               </span>
               <span className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
                 <Upload className="size-4" aria-hidden />
