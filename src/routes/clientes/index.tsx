@@ -1,9 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { FileDown, Plus, Search, Upload } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
-import { DialogImportadorClientes } from "@/components/DialogImportadorClientes";
+import { BotaoEmAtualizacao } from "@/components/EmAtualizacao";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
@@ -36,7 +36,6 @@ import {
   useVinculosEscritorio,
 } from "@/lib/escritorio";
 import { formatDate } from "@/lib/format";
-import { gerarModeloDocumento } from "@/lib/modeloDocumento";
 import { correspondeBusca } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -68,7 +67,6 @@ function Clientes() {
   const { filtro } = useFiltroEscritorio();
   const vinculos = useVinculosEscritorio();
   const identificadores = useIdentificadoresPorCliente();
-  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("cadastro_recente");
 
@@ -125,10 +123,6 @@ function Clientes() {
         titulo="Clientes"
         descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação.`}
       >
-        <Button variant="outline" onClick={gerarModeloDocumento}>
-          <FileDown className="size-4" aria-hidden />
-          Modelo Documento
-        </Button>
         <DialogPagamento
           clientes={base.clientes}
           trigger={
@@ -138,14 +132,10 @@ function Clientes() {
             </Button>
           }
         />
-        <DialogImportadorClientes
-          trigger={
-            <Button>
-              <Upload className="size-4" aria-hidden />
-              Importar Clientes
-            </Button>
-          }
-        />
+        <BotaoEmAtualizacao>
+          <Upload className="size-4" aria-hidden />
+          Importar Clientes
+        </BotaoEmAtualizacao>
       </PageHeader>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
@@ -181,7 +171,7 @@ function Clientes() {
           descricao={
             busca
               ? "Nenhum resultado para a pesquisa atual."
-              : "Importe uma listagem de clientes para começar."
+              : "Nenhum cliente em tramitação cadastrado."
           }
         />
       ) : (
@@ -199,13 +189,7 @@ function Clientes() {
             </TableHeader>
             <TableBody>
               {lista.map((cliente) => (
-                <TableRow
-                  key={cliente.id}
-                  className="cursor-pointer"
-                  onClick={() =>
-                    navigate({ to: "/clientes/$clienteId", params: { clienteId: cliente.id } })
-                  }
-                >
+                <TableRow key={cliente.id}>
                   <TableCell className="font-semibold">
                     {cliente.nome}
                     <span className="mt-1 flex flex-wrap gap-1">
@@ -231,11 +215,9 @@ function Clientes() {
                       className="flex items-center justify-end gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Button asChild size="sm" variant="outline">
-                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
-                          Ver perfil
-                        </Link>
-                      </Button>
+                      <BotaoEmAtualizacao size="sm" variant="outline">
+                        Ver perfil
+                      </BotaoEmAtualizacao>
                       <BotaoExcluirCliente cliente={cliente} />
                     </div>
                   </TableCell>

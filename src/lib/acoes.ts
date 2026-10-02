@@ -8,13 +8,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { chaveParRejeitado, normalizarNome, type LimiaresSimilaridade } from "./similarity";
-import {
-  montarPayloadImportacao,
-  VERSAO_MODELO,
-  type ItemPlano,
-  type PlanoModelo,
-} from "./modeloDocumento";
-import type { Json } from "@/integrations/supabase/types";
 
 import type { ClassificacaoEntrada, Cliente, TipoPagamento } from "./tipos";
 
@@ -97,10 +90,7 @@ export async function classificarEntrada(
   entradaId: string,
   classificacao: ClassificacaoEntrada | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("pagamentos")
-    .update({ classificacao })
-    .eq("id", entradaId);
+  const { error } = await supabase.from("pagamentos").update({ classificacao }).eq("id", entradaId);
   if (error) erro(error.message);
 }
 
@@ -246,65 +236,4 @@ export async function salvarLimiares(limiares: LimiaresSimilaridade): Promise<vo
     .from("configuracoes")
     .upsert({ chave: "similaridade", valor: { ...limiares } }, { onConflict: "chave" });
   if (error) erro(error.message);
-}
-
-// ---------------------------------------------------------------------------
-// Importação pelo Modelo Documento (ATLAS_CLIENTES_V1)
-// ---------------------------------------------------------------------------
-
-export interface ResultadoImportacaoModelo {
-  novosClientes: number;
-  existentesAtualizados: number;
-  semAlteracao: number;
-  movidosParaJaPagos: number;
-  pagamentosRegistrados: number;
-  /** Entradas que já existiam (reimportação) e não foram duplicadas. */
-  valoresJaRegistrados: number;
-  naoEncontrados: ItemPlano[];
-  naoImportadosPorErro: ItemPlano[];
-}
-
-/**
- * Executa um plano já revisado pelo usuário na pré-visualização.
- *
- * Toda a gravação acontece numa ÚNICA transação no banco
- * (`aplicar_importacao_modelo`): se qualquer linha falhar, nada é gravado
- * — não existe cliente marcado como pago sem o restante da operação, nem
- * importação pela metade. O banco ainda revalida duplicidades no momento
- * da gravação. Reexecutar o mesmo arquivo resulta em "sem alteração".
- */
-export async function executarPlanoModelo(params: {
-  plano: PlanoModelo;
-  nomeArquivo: string;
-}): Promise<ResultadoImportacaoModelo> {
-  const itens = montarPayloadImportacao(params.plano);
-  const naoEncontrados = params.plano.itens.filter((i) => i.acao === "nao_encontrado");
-  const naoImportadosPorErro = params.plano.itens.filter((i) => i.acao === "erro");
-  const semAlteracao = params.plano.itens.filter((i) => i.acao === "sem_alteracao").length;
-
-  const { data, error } = await supabase.rpc("aplicar_importacao_modelo", {
-    p_itens: itens as unknown as Json,
-    p_origem: `Modelo Documento ${VERSAO_MODELO} — ${params.nomeArquivo}`,
-    p_arquivo: params.nomeArquivo,
-    p_total_linhas: params.plano.resumo.total,
-  });
-  if (error) erro(error.message);
-
-  const r = (data ?? {}) as {
-    novos?: number;
-    atualizados?: number;
-    movidos?: number;
-    valores?: number;
-    valores_ignorados?: number;
-  };
-  return {
-    novosClientes: r.novos ?? 0,
-    existentesAtualizados: r.atualizados ?? 0,
-    semAlteracao,
-    movidosParaJaPagos: r.movidos ?? 0,
-    pagamentosRegistrados: r.valores ?? 0,
-    valoresJaRegistrados: (r.valores_ignorados ?? 0) + params.plano.resumo.entradasJaRegistradas,
-    naoEncontrados,
-    naoImportadosPorErro,
-  };
 }

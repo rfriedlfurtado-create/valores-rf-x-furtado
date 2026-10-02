@@ -1,12 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- tabelas novas ainda sem tipos gerados (types.ts) */
+import {
+  avisarEmAtualizacao,
+  BotaoEmAtualizacao,
+  MENSAGEM_EM_ATUALIZACAO,
+} from "@/components/EmAtualizacao";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, FileSpreadsheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -173,11 +177,12 @@ function LotesPorEscritorio() {
           const st = ROTULO_STATUS_LOTE[l.status] ?? { texto: l.status, tom: "neutro" as const };
           const plano = (l.resumo?.["plano"] ?? {}) as Record<string, number>;
           return (
-            <Link
+            <button
               key={l.id}
-              to="/importacoes/$loteId"
-              params={{ loteId: l.id }}
-              className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
+              type="button"
+              title={MENSAGEM_EM_ATUALIZACAO}
+              onClick={avisarEmAtualizacao}
+              className="flex w-full cursor-default flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex items-center gap-3">
                 <FileSpreadsheet className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -196,7 +201,7 @@ function LotesPorEscritorio() {
                 </div>
               </div>
               <BadgeStatus texto={st.texto} tom={st.tom} />
-            </Link>
+            </button>
           );
         })}
       </div>
@@ -238,9 +243,7 @@ function HistoricoImportacoes() {
         descricao="Todas as importações realizadas, com o resultado da comparação automática de nomes."
       >
         <FiltroEscritorioSelect className="h-9" />
-        <Button asChild size="sm">
-          <Link to="/importar">Nova importação</Link>
-        </Button>
+        <BotaoEmAtualizacao size="sm">Nova importação</BotaoEmAtualizacao>
       </PageHeader>
 
       <LotesPorEscritorio />

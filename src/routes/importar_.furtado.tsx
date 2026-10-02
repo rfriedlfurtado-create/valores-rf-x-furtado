@@ -1,38 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { ImportadorFurtado } from "@/components/importador/furtado/ImportadorFurtado";
-import { PageHeader } from "@/components/layout/AppShell";
-import { Button } from "@/components/ui/button";
+import { PaginaEmAtualizacao } from "@/components/EmAtualizacao";
 
+/**
+ * Rota mantida apenas para links e favoritos antigos. A tela anterior foi
+ * removida; a nova estrutura será definida posteriormente.
+ */
 export const Route = createFileRoute("/importar_/furtado")({
   head: () => ({
-    meta: [
-      { title: "Importar clientes — Furtado Advogados" },
-      {
-        name: "description",
-        content:
-          "Importação da planilha de controle da Furtado Advogados, com revisão antes da gravação.",
-      },
-    ],
+    meta: [{ title: "Importar clientes — Base de Pagamentos" }],
   }),
-  component: ImportarFurtadoPage,
+  component: () => <PaginaEmAtualizacao voltarPara="/clientes" rotuloVoltar="Clientes" />,
 });
-
-function ImportarFurtadoPage() {
-  return (
-    <div>
-      <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2">
-        <Link to="/importar">
-          <ArrowLeft className="size-4" aria-hidden />
-          Opções de importação
-        </Link>
-      </Button>
-      <PageHeader
-        titulo="Importar clientes — Furtado Advogados"
-        descricao="Leitura integral da planilha, revisão das associações e gravação rastreável por lote."
-      />
-      <ImportadorFurtado />
-    </div>
-  );
-}

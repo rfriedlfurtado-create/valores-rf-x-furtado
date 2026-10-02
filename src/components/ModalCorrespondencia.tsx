@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { TextoPerfilEmAtualizacao } from "@/components/EmAtualizacao";
 import { AlertTriangle, ArrowRight, Check, Clock, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -91,7 +91,9 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Novo registro
                 </p>
-                <p className="mt-2 text-lg font-bold leading-tight">{item.importado.nome_original}</p>
+                <p className="mt-2 text-lg font-bold leading-tight">
+                  {item.importado.nome_original}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Importação: {item.importacao?.nome_importacao ?? "—"}
                 </p>
@@ -100,13 +102,18 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
                 </p>
               </div>
 
-              <ArrowRight className="mx-auto hidden size-5 text-muted-foreground sm:block" aria-hidden />
+              <ArrowRight
+                className="mx-auto hidden size-5 text-muted-foreground sm:block"
+                aria-hidden
+              />
 
               <div className="rounded-xl border border-money/30 bg-money-soft/40 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Cliente encontrado na base
                 </p>
-                <p className="mt-2 text-lg font-bold leading-tight">{item.clienteEncontrado.nome}</p>
+                <p className="mt-2 text-lg font-bold leading-tight">
+                  {item.clienteEncontrado.nome}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Cadastrado em {formatDate(item.clienteEncontrado.created_at)}
                 </p>
@@ -141,9 +148,14 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
               {pagamentos.length > 0 ? (
                 <ul className="mt-3 divide-y divide-border rounded-lg border border-border">
                   {pagamentos.map((pagamento) => (
-                    <li key={pagamento.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <li
+                      key={pagamento.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2"
+                    >
                       <div>
-                        <p className="text-sm font-medium">{formatDate(pagamento.data_pagamento)}</p>
+                        <p className="text-sm font-medium">
+                          {formatDate(pagamento.data_pagamento)}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {ROTULO_TIPO_PAGAMENTO[pagamento.tipo]}
                           {pagamento.observacao ? ` · ${pagamento.observacao}` : ""}
@@ -159,19 +171,16 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
                 </p>
               )}
 
-              <Link
-                to="/clientes/$clienteId"
-                params={{ clienteId: item.clienteEncontrado.id }}
-                className="mt-3 inline-block text-sm font-medium text-info underline-offset-4 hover:underline"
-              >
+              <TextoPerfilEmAtualizacao className="mt-3 inline-block text-sm font-medium text-muted-foreground">
                 Abrir perfil completo
-              </Link>
+              </TextoPerfilEmAtualizacao>
             </div>
 
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/50 px-3 py-2 text-xs text-warning">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
-                Nomes parecidos podem pertencer a pessoas diferentes. Confirme apenas se tiver certeza.
+                Nomes parecidos podem pertencer a pessoas diferentes. Confirme apenas se tiver
+                certeza.
               </span>
             </div>
 

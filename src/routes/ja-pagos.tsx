@@ -1,10 +1,10 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { BotaoEmAtualizacao } from "@/components/EmAtualizacao";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { Valor } from "@/components/Valor";
-import { Button } from "@/components/ui/button";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Input } from "@/components/ui/input";
 import {
@@ -63,7 +63,6 @@ function JaPagos() {
   const { filtro } = useFiltroEscritorio();
   const vinculos = useVinculosEscritorio();
   const identificadores = useIdentificadoresPorCliente();
-  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<OrdenacaoJaPagos>("pago_recente");
 
@@ -176,13 +175,7 @@ function JaPagos() {
             </TableHeader>
             <TableBody>
               {lista.map((cliente) => (
-                <TableRow
-                  key={cliente.id}
-                  className="cursor-pointer"
-                  onClick={() =>
-                    navigate({ to: "/clientes/$clienteId", params: { clienteId: cliente.id } })
-                  }
-                >
+                <TableRow key={cliente.id}>
                   <TableCell className="font-semibold">
                     {cliente.nome}
                     <span className="mt-1 flex flex-wrap gap-1">
@@ -208,11 +201,9 @@ function JaPagos() {
                       className="flex items-center justify-end gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Button asChild size="sm" variant="outline">
-                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
-                          Ver perfil
-                        </Link>
-                      </Button>
+                      <BotaoEmAtualizacao size="sm" variant="outline">
+                        Ver perfil
+                      </BotaoEmAtualizacao>
                       <BotaoExcluirCliente cliente={cliente} />
                     </div>
                   </TableCell>
