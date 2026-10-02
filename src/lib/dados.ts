@@ -11,6 +11,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { LIMIARES_PADRAO, type LimiaresSimilaridade } from "./similarity";
 import { agregarBase, type BaseAgregada } from "./agregacao";
+import { CHAVES_FURTADO } from "./furtado/consultas";
 import type {
   Cliente,
   ClienteImportado,
@@ -171,4 +172,5 @@ export const CHAVES_DOMINIO = [
   ["clientes_importados"],
   ["correspondencias"],
   ["rejeicoes"],
+  ...CHAVES_FURTADO,
 ] as const;

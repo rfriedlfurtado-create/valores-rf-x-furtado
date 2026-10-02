@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
 import { useSincronizacaoTempoReal } from "@/lib/sincronizacao";
+import { FiltroEscritorioProvider } from "@/lib/escritorio";
 
 function NotFoundComponent() {
   return (
@@ -132,10 +133,12 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <SincronizacaoGlobal />
-      <AppShell>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </AppShell>
+      <FiltroEscritorioProvider>
+        <AppShell>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </AppShell>
+      </FiltroEscritorioProvider>
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
   );

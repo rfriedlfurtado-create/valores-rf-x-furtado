@@ -17,6 +17,18 @@ import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filtrarJaPagos, useSistema } from "@/hooks/useSistema";
+import { useQuery } from "@tanstack/react-query";
+import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
+import {
+  clientePassaFiltro,
+  registroPassaFiltro,
+  useFiltroEscritorio,
+  useVinculosEscritorio,
+} from "@/lib/escritorio";
+import { cobrancasQuery, lancamentosQuery } from "@/lib/furtado/consultas";
+import { CATEGORIAS_HONORARIOS } from "@/lib/furtado/modelo";
+import { calcularIndicadores } from "@/lib/situacao";
+import { ClipboardList, Landmark } from "lucide-react";
 import { formatBRL, formatPercent } from "@/lib/format";
 import {
   GRUPOS_CLASSIFICACAO,
@@ -47,7 +59,59 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { base, correspondencias, carregando } = useSistema();
+  const { filtro } = useFiltroEscritorio();
+  const vinculos = useVinculosEscritorio();
+  const lancamentos = useQuery(lancamentosQuery());
+  const cobrancas = useQuery(cobrancasQuery());
   const [selecionado, setSelecionado] = useState<CorrespondenciaDetalhada | null>(null);
+
+  // Indicadores no escritório escolhido: cada cliente conta uma única vez.
+  const indFiltrado = useMemo(() => {
+    if (!base) return null;
+    if (filtro === "todos") return base.indicadores;
+    const clientes = base.clientes.filter((c) => clientePassaFiltro(c, filtro, vinculos));
+    return calcularIndicadores(clientes, base.pagamentosPorCliente);
+  }, [base, filtro, vinculos]);
+
+  const extras = useMemo(() => {
+    if (!base) return { aReceber: 0, qtdAReceber: 0, saldoCobrancas: 0, cobrancasAbertas: 0 };
+    const vigente = (id: string) => base.porId.has(id);
+    const principais = (lancamentos.data ?? []).filter(
+      (l) =>
+        l.versao === 1 &&
+        vigente(l.cliente_id) &&
+        CATEGORIAS_HONORARIOS.includes(l.categoria) &&
+        l.valor !== null &&
+        !l.pagamento_id &&
+        l.natureza !== "informativo" &&
+        !(l.observacao ?? "").includes("Valor alternativo") &&
+        registroPassaFiltro(l.escritorio, filtro),
+    );
+    const parcelasPorCob = new Map<string, { valor: number; valor_pago: number }[]>();
+    for (const p of cobrancas.data?.parcelas ?? [])
+      parcelasPorCob.set(p.cobranca_id, [...(parcelasPorCob.get(p.cobranca_id) ?? []), p]);
+    let saldo = 0;
+    let abertas = 0;
+    for (const c of cobrancas.data?.cobrancas ?? []) {
+      if (
+        !vigente(c.cliente_id) ||
+        !registroPassaFiltro(c.escritorio, filtro) ||
+        c.situacao === "quitada"
+      )
+        continue;
+      abertas++;
+      const ps = parcelasPorCob.get(c.id);
+      saldo += ps?.length
+        ? ps.reduce((s, p) => s + (p.valor - p.valor_pago), 0)
+        : (c.valor_contratado ?? 0);
+    }
+    return {
+      aReceber: Math.round(principais.reduce((s, l) => s + (l.valor ?? 0), 0) * 100) / 100,
+      qtdAReceber: principais.length,
+      saldoCobrancas: Math.round(saldo * 100) / 100,
+      cobrancasAbertas: abertas,
+    };
+  }, [base, lancamentos.data, cobrancas.data, filtro]);
 
   // Correspondências de nomes (alertas de similaridade) — NÃO confundir com
   // a situação PAGO do cliente, que vem de base.indicadores.jaPagos.
@@ -75,14 +139,16 @@ function Dashboard() {
     ? (base.pagamentosPorCliente.get(selecionado.clienteEncontrado.id) ?? [])
     : [];
 
-  const ind = base.indicadores;
+  const ind = indFiltrado ?? base.indicadores;
 
   return (
     <div>
       <PageHeader
         titulo="Dashboard"
         descricao="Panorama da base histórica e das correspondências encontradas."
-      />
+      >
+        <FiltroEscritorioSelect className="h-10" />
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
@@ -119,6 +185,20 @@ function Dashboard() {
           valor={ind.importadosNoMes}
           icone={CalendarPlus}
           tom="info"
+        />
+        <StatCard
+          titulo="Honorários a receber (informados)"
+          valor={formatBRL(extras.aReceber)}
+          icone={Landmark}
+          tom="info"
+          descricao={`${extras.qtdAReceber} valor(es) previstos/devidos na planilha, ainda não confirmados`}
+        />
+        <StatCard
+          titulo="Cobranças em aberto"
+          valor={formatBRL(extras.saldoCobrancas)}
+          icone={ClipboardList}
+          tom="warning"
+          descricao={`${extras.cobrancasAbertas} cobrança(s) não quitada(s)`}
         />
         <StatCard
           titulo="Correspondências a conferir"
@@ -224,6 +304,10 @@ const COR_GRUPO: Record<GrupoClassificacao, string> = {
   contratuais: "bg-info",
   atrasados: "bg-money",
   sucumbencia: "bg-warning",
+  implantacao: "bg-sky-500",
+  execucao: "bg-violet-500",
+  administrativos: "bg-teal-500",
+  outros: "bg-rose-400",
   sem_classificacao: "bg-muted-foreground/40",
 };
 

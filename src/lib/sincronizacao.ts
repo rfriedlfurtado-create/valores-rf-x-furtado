@@ -103,6 +103,15 @@ export const TABELAS_OBSERVADAS = [
   "importacoes",
   "clientes_importados",
   "correspondencias",
+  "cliente_escritorios",
+  "atendimentos",
+  "beneficios",
+  "lancamentos_financeiros",
+  "requisicoes",
+  "acordos",
+  "cobrancas",
+  "parcelas",
+  "import_lotes",
 ] as const;
 
 /**

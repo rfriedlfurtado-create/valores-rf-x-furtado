@@ -8,10 +8,45 @@ import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
+import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
+import {
+  BadgeEscritorio,
+  clientePassaFiltro,
+  registroPassaFiltro,
+  useFiltroEscritorio,
+  useVinculosEscritorio,
+  type FiltroEscritorio,
+} from "@/lib/escritorio";
+import type { ClienteComTotais, Pagamento } from "@/lib/tipos";
+
+/** Recebimento no filtro: escritório do próprio registro, ou do cliente quando não informado. */
+function pagamentoPassa(
+  pagamento: Pagamento,
+  cliente: ClienteComTotais | undefined,
+  filtro: FiltroEscritorio,
+  vinculos: Map<string, Set<"furtado" | "ricardo_friedl">>,
+): boolean {
+  if (filtro === "todos") return true;
+  if (pagamento.escritorio) return registroPassaFiltro(pagamento.escritorio, filtro);
+  return !!cliente && clientePassaFiltro(cliente, filtro, vinculos);
+}
 import { formatBRL, formatDate } from "@/lib/format";
 import { normalizarNome } from "@/lib/similarity";
 import { Coins, Receipt } from "lucide-react";
@@ -35,6 +70,8 @@ export const Route = createFileRoute("/pagamentos")({
 
 function HistoricoPagamentos() {
   const { base, carregando } = useSistema();
+  const { filtro } = useFiltroEscritorio();
+  const vinculos = useVinculosEscritorio();
   const [busca, setBusca] = useState("");
   const [tipo, setTipo] = useState("todos");
   const [classificacao, setClassificacao] = useState("todas");
@@ -51,6 +88,7 @@ function HistoricoPagamentos() {
     return todos
       .filter(({ pagamento, cliente }) => {
         if (!cliente) return false;
+        if (!pagamentoPassa(pagamento, cliente, filtro, vinculos)) return false;
         if (termo && !cliente.nome_normalizado.includes(termo)) return false;
         if (tipo !== "todos" && pagamento.tipo !== tipo) return false;
         if (
@@ -63,7 +101,17 @@ function HistoricoPagamentos() {
         return true;
       })
       .sort((a, b) => b.pagamento.data_pagamento.localeCompare(a.pagamento.data_pagamento));
-  }, [base, busca, tipo, classificacao, de, ate]);
+  }, [base, busca, tipo, classificacao, de, ate, filtro, vinculos]);
+
+  const totalEscritorio = useMemo(() => {
+    if (!base) return 0;
+    let soma = 0;
+    for (const [clienteId, lista] of base.pagamentosPorCliente) {
+      const cliente = base.porId.get(clienteId);
+      for (const p of lista) if (pagamentoPassa(p, cliente, filtro, vinculos)) soma += p.valor;
+    }
+    return Math.round(soma * 100) / 100;
+  }, [base, filtro, vinculos]);
 
   const totalFiltrado = linhas.reduce((soma, linha) => soma + linha.pagamento.valor, 0);
 
@@ -78,7 +126,10 @@ function HistoricoPagamentos() {
 
   return (
     <div>
-      <PageHeader titulo="Histórico de pagamentos" descricao="Todos os valores registrados na base.">
+      <PageHeader
+        titulo="Financeiro — recebimentos"
+        descricao="Valores efetivamente recebidos (confirmados). Previsões e honorários devidos ficam no perfil e em Relatórios."
+      >
         <DialogPagamento
           clientes={base.clientes}
           trigger={
@@ -91,12 +142,22 @@ function HistoricoPagamentos() {
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard titulo="Valor no filtro atual" valor={formatBRL(totalFiltrado)} icone={Coins} tom="money" />
+        <StatCard
+          titulo="Valor no filtro atual"
+          valor={formatBRL(totalFiltrado)}
+          icone={Coins}
+          tom="money"
+        />
         <StatCard titulo="Pagamentos no filtro" valor={linhas.length} icone={Receipt} />
-        <StatCard titulo="Valor total da base" valor={formatBRL(base.indicadores.valorRecebido)} icone={Coins} tom="money" />
+        <StatCard
+          titulo={filtro === "todos" ? "Valor total da base" : "Valor total do escritório"}
+          valor={formatBRL(filtro === "todos" ? base.indicadores.valorRecebido : totalEscritorio)}
+          icone={Coins}
+          tom="money"
+        />
       </div>
 
-      <div className="my-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto]">
+      <div className="my-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -107,8 +168,11 @@ function HistoricoPagamentos() {
             aria-label="Pesquisar cliente"
           />
         </div>
+        <FiltroEscritorioSelect className="h-11" />
         <Select value={tipo} onValueChange={setTipo}>
-          <SelectTrigger className="h-11 lg:w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-11 lg:w-48">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os tipos</SelectItem>
             <SelectItem value="pix">PIX</SelectItem>
@@ -149,7 +213,10 @@ function HistoricoPagamentos() {
       </div>
 
       {linhas.length === 0 ? (
-        <SecaoVazia titulo="Nenhum pagamento encontrado" descricao="Ajuste os filtros ou registre um pagamento." />
+        <SecaoVazia
+          titulo="Nenhum pagamento encontrado"
+          descricao="Ajuste os filtros ou registre um pagamento."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <Table>
@@ -178,6 +245,9 @@ function HistoricoPagamentos() {
                     >
                       {cliente?.nome}
                     </Link>
+                    {pagamento.escritorio ? (
+                      <BadgeEscritorio escritorio={pagamento.escritorio} className="ml-2" />
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-right">
                     <Valor valor={pagamento.valor} tamanho="lg" />

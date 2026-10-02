@@ -81,8 +81,8 @@ export function normalizarTexto(texto: string): string {
 }
 
 /**
- * Filtro de pesquisa único: nome, variações confirmadas, CPF (só dígitos)
- * e número do processo.
+ * Filtro de pesquisa único: nome, variações confirmadas, CPF (só dígitos),
+ * número do processo (do cadastro e dos atendimentos) e NB dos benefícios.
  */
 export function correspondeBusca(
   cliente: {
@@ -93,6 +93,7 @@ export function correspondeBusca(
   },
   termo: string,
   variacoesPorCliente?: Map<string, string[]>,
+  identificadoresPorCliente?: Map<string, string[]>,
 ): boolean {
   const normalizado = normalizarTexto(termo);
   if (!normalizado) return true;
@@ -103,6 +104,8 @@ export function correspondeBusca(
   if (digitos.length >= 3) {
     if ((cliente.cpf ?? "").replace(/\D/g, "").includes(digitos)) return true;
     if ((cliente.numero_processo ?? "").replace(/\D/g, "").includes(digitos)) return true;
+    if ((identificadoresPorCliente?.get(cliente.id) ?? []).some((d) => d.includes(digitos)))
+      return true;
   }
   return false;
 }
@@ -123,6 +126,10 @@ export const GRUPOS_CLASSIFICACAO: GrupoClassificacao[] = [
   "contratuais",
   "atrasados",
   "sucumbencia",
+  "implantacao",
+  "execucao",
+  "administrativos",
+  "outros",
   "sem_classificacao",
 ];
 

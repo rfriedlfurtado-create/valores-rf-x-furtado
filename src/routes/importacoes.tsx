@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tabelas novas ainda sem tipos gerados (types.ts) */
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, FileSpreadsheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -16,6 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
+import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
+import { BadgeEscritorio, registroPassaFiltro, useFiltroEscritorio } from "@/lib/escritorio";
+import { lotesQuery } from "@/lib/furtado/consultas";
+import { ROTULO_STATUS_LOTE } from "@/lib/furtado/rotulosUi";
 import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 import type { ClienteImportado, Importacao, StatusAnalise } from "@/lib/tipos";
 
@@ -152,8 +158,58 @@ function LinhaImportacao({
   );
 }
 
+function LotesPorEscritorio() {
+  const { data: lotes = [] } = useQuery(lotesQuery());
+  const { filtro } = useFiltroEscritorio();
+  const lista = lotes.filter((l) => registroPassaFiltro(l.escritorio, filtro));
+  if (!lista.length) return null;
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+        Lotes de importação por escritório
+      </h2>
+      <div className="space-y-2">
+        {lista.map((l) => {
+          const st = ROTULO_STATUS_LOTE[l.status] ?? { texto: l.status, tom: "neutro" as const };
+          const plano = (l.resumo?.["plano"] ?? {}) as Record<string, number>;
+          return (
+            <Link
+              key={l.id}
+              to="/importacoes/$loteId"
+              params={{ loteId: l.id }}
+              className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <FileSpreadsheet className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <div>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    {l.arquivo_nome}
+                    <BadgeEscritorio escritorio={l.escritorio} />
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(l.created_at)} · {l.pessoas_aplicadas} de {l.total_pessoas}{" "}
+                    pessoa(s) gravada(s)
+                    {plano["pendenciasAbertas"]
+                      ? ` · ${plano["pendenciasAbertas"]} pendência(s) identificada(s)`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+              <BadgeStatus texto={st.texto} tom={st.tom} />
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function HistoricoImportacoes() {
-  const { importacoes, importados, carregando } = useSistema();
+  const { importacoes: todasImportacoes, importados, carregando } = useSistema();
+  const { filtro } = useFiltroEscritorio();
+  const importacoes = todasImportacoes.filter(
+    (i) => filtro === "todos" || (i.escritorio ?? "a_confirmar") === filtro,
+  );
   const [abertaId, setAbertaId] = useState<string | null>(null);
 
   const itensPorImportacao = useMemo(() => {
@@ -181,10 +237,13 @@ function HistoricoImportacoes() {
         titulo="Histórico de importações"
         descricao="Todas as importações realizadas, com o resultado da comparação automática de nomes."
       >
+        <FiltroEscritorioSelect className="h-9" />
         <Button asChild size="sm">
           <Link to="/importar">Nova importação</Link>
         </Button>
       </PageHeader>
+
+      <LotesPorEscritorio />
 
       {importacoes.length === 0 ? (
         <SecaoVazia

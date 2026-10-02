@@ -1,6 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Archive, CalendarClock, CalendarDays, Coins, Plus, Receipt, Save } from "lucide-react";
+import {
+  ArrowLeft,
+  Archive,
+  CalendarClock,
+  CalendarDays,
+  Coins,
+  Plus,
+  Receipt,
+  Save,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,9 +22,18 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { EntradasDeValores } from "@/components/EntradasDeValores";
+import { SecoesPerfil } from "@/components/perfil/SecoesPerfil";
+import { BadgeEscritorio, escritoriosDoCliente, useVinculosEscritorio } from "@/lib/escritorio";
 import { useSistema } from "@/hooks/useSistema";
 import { arquivarCliente, atualizarCliente, reativarCliente } from "@/lib/acoes";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -41,6 +59,7 @@ export const Route = createFileRoute("/clientes/$clienteId")({
 function PerfilCliente() {
   const { clienteId } = Route.useParams();
   const { base, variacoes, carregando } = useSistema();
+  const vinculos = useVinculosEscritorio();
   const sincronizar = useSincronizar();
 
   const cliente = base?.porId.get(clienteId);
@@ -66,7 +85,8 @@ function PerfilCliente() {
   });
 
   const alternarArquivo = useMutation({
-    mutationFn: () => (cliente?.arquivado ? reativarCliente(clienteId) : arquivarCliente(clienteId)),
+    mutationFn: () =>
+      cliente?.arquivado ? reativarCliente(clienteId) : arquivarCliente(clienteId),
     onSuccess: async () => {
       await sincronizar(EVENTOS.CLIENTE_ARQUIVADO);
       toast.success("Status atualizado. O histórico financeiro foi preservado.");
@@ -78,7 +98,10 @@ function PerfilCliente() {
 
   if (!cliente) {
     return (
-      <SecaoVazia titulo="Cliente não encontrado" descricao="Este cadastro pode ter sido removido." />
+      <SecaoVazia
+        titulo="Cliente não encontrado"
+        descricao="Este cadastro pode ter sido removido."
+      />
     );
   }
 
@@ -120,6 +143,13 @@ function PerfilCliente() {
         />
       </PageHeader>
 
+      <div className="-mt-3 mb-4 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        Escritório:
+        {escritoriosDoCliente(cliente, vinculos).map((e) => (
+          <BadgeEscritorio key={e} escritorio={e} completo />
+        ))}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           titulo="Total recebido"
@@ -127,7 +157,11 @@ function PerfilCliente() {
           icone={Coins}
           tom="money"
         />
-        <StatCard titulo="Entradas de valores" valor={cliente.quantidadePagamentos} icone={Receipt} />
+        <StatCard
+          titulo="Entradas de valores"
+          valor={cliente.quantidadePagamentos}
+          icone={Receipt}
+        />
         <StatCard
           titulo="Último pagamento"
           valor={formatDate(cliente.ultimoPagamento)}
@@ -194,11 +228,21 @@ function PerfilCliente() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Número do processo</dt>
-                  <dd className="font-medium tabular">{cliente.numero_processo || "Não informado"}</dd>
+                  <dd className="font-medium tabular">
+                    {cliente.numero_processo || "Não informado"}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Status</dt>
                   <dd className="font-medium">{ROTULO_SITUACAO[situacaoDoCliente(cliente)]}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Escritório de origem do cadastro
+                  </dt>
+                  <dd className="font-medium">
+                    <BadgeEscritorio escritorio={cliente.escritorio_origem} completo />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Origem da importação</dt>
@@ -239,6 +283,8 @@ function PerfilCliente() {
           </Card>
         </aside>
       </div>
+
+      <SecoesPerfil cliente={cliente} pagamentos={pagamentos} />
     </div>
   );
 }

@@ -26,6 +26,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
+import { useIdentificadoresPorCliente } from "@/hooks/useDadosFurtado";
+import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
+import {
+  BadgeEscritorio,
+  clientePassaFiltro,
+  escritoriosDoCliente,
+  useFiltroEscritorio,
+  useVinculosEscritorio,
+} from "@/lib/escritorio";
 import { formatDate } from "@/lib/format";
 import { gerarModeloDocumento } from "@/lib/modeloDocumento";
 import { correspondeBusca } from "@/lib/situacao";
@@ -37,8 +46,7 @@ export const Route = createFileRoute("/clientes/")({
       { title: "Clientes — Base de Pagamentos" },
       {
         name: "description",
-        content:
-          "Clientes com processos em tramitação cadastrados no sistema.",
+        content: "Clientes com processos em tramitação cadastrados no sistema.",
       },
       { property: "og:title", content: "Clientes — Base de Pagamentos" },
       { property: "og:description", content: "Clientes com processos em tramitação." },
@@ -47,11 +55,19 @@ export const Route = createFileRoute("/clientes/")({
   component: Clientes,
 });
 
-type Ordenacao = "nome" | "valor_desc" | "valor_asc" | "pagamento_recente" | "pagamento_antigo" | "cadastro_recente";
-
+type Ordenacao =
+  | "nome"
+  | "valor_desc"
+  | "valor_asc"
+  | "pagamento_recente"
+  | "pagamento_antigo"
+  | "cadastro_recente";
 
 function Clientes() {
   const { base, variacoes, carregando } = useSistema();
+  const { filtro } = useFiltroEscritorio();
+  const vinculos = useVinculosEscritorio();
+  const identificadores = useIdentificadoresPorCliente();
   const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("cadastro_recente");
@@ -70,8 +86,10 @@ function Clientes() {
   const lista = useMemo(() => {
     if (!base) return [];
     // Visão CLIENTES = situação EM_TRAMITACAO, derivada da base central.
-    const resultado = base.emTramitacao.filter((cliente) =>
-      correspondeBusca(cliente, busca, variacoesPorCliente),
+    const resultado = base.emTramitacao.filter(
+      (cliente) =>
+        clientePassaFiltro(cliente, filtro, vinculos) &&
+        correspondeBusca(cliente, busca, variacoesPorCliente, identificadores),
     );
 
     const ordenadores: Record<Ordenacao, (a: ClienteComTotais, b: ClienteComTotais) => number> = {
@@ -85,7 +103,7 @@ function Clientes() {
     };
 
     return [...resultado].sort(ordenadores[ordenacao]);
-  }, [base, busca, ordenacao, variacoesPorCliente]);
+  }, [base, busca, ordenacao, variacoesPorCliente, filtro, vinculos, identificadores]);
 
   if (carregando || !base) {
     return (
@@ -96,7 +114,10 @@ function Clientes() {
     );
   }
 
-  const totalEmTramitacao = base.indicadores.emTramitacao;
+  const totalEmTramitacao =
+    filtro === "todos"
+      ? base.indicadores.emTramitacao
+      : base.emTramitacao.filter((c) => clientePassaFiltro(c, filtro, vinculos)).length;
 
   return (
     <div>
@@ -127,17 +148,18 @@ function Clientes() {
         />
       </PageHeader>
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={busca}
             onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Pesquisar cliente..."
+            placeholder="Pesquisar por nome, CPF, processo ou NB..."
             className="h-12 pl-10 text-base"
             aria-label="Pesquisar cliente"
           />
         </div>
+        <FiltroEscritorioSelect />
         <Select value={ordenacao} onValueChange={(valor) => setOrdenacao(valor as Ordenacao)}>
           <SelectTrigger className="h-12 lg:w-56">
             <SelectValue />
@@ -184,7 +206,14 @@ function Clientes() {
                     navigate({ to: "/clientes/$clienteId", params: { clienteId: cliente.id } })
                   }
                 >
-                  <TableCell className="font-semibold">{cliente.nome}</TableCell>
+                  <TableCell className="font-semibold">
+                    {cliente.nome}
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {escritoriosDoCliente(cliente, vinculos).map((e) => (
+                        <BadgeEscritorio key={e} escritorio={e} />
+                      ))}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Valor valor={cliente.totalRecebido} tamanho="lg" />
                   </TableCell>

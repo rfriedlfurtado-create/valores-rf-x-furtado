@@ -11,13 +11,18 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnaliseRouteImport } from './routes/analise'
+import { Route as CobrancasRouteImport } from './routes/cobrancas'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as ImportacoesRouteImport } from './routes/importacoes'
 import { Route as ImportarRouteImport } from './routes/importar'
 import { Route as JaPagosRouteImport } from './routes/ja-pagos'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
+import { Route as ProcessosRouteImport } from './routes/processos'
+import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ClientesIndexRouteImport } from './routes/clientes/index'
 import { Route as ClientesClienteIdRouteImport } from './routes/clientes/$clienteId'
+import { Route as ImportacoesLoteIdRouteImport } from './routes/importacoes_.$loteId'
+import { Route as ImportarFurtadoRouteImport } from './routes/importar_.furtado'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -27,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
 const AnaliseRoute = AnaliseRouteImport.update({
   id: '/analise',
   path: '/analise',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CobrancasRoute = CobrancasRouteImport.update({
+  id: '/cobrancas',
+  path: '/cobrancas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -54,6 +64,16 @@ const PagamentosRoute = PagamentosRouteImport.update({
   path: '/pagamentos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProcessosRoute = ProcessosRouteImport.update({
+  id: '/processos',
+  path: '/processos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RelatoriosRoute = RelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ClientesIndexRoute = ClientesIndexRouteImport.update({
   id: '/clientes/',
   path: '/clientes/',
@@ -64,39 +84,64 @@ const ClientesClienteIdRoute = ClientesClienteIdRouteImport.update({
   path: '/clientes/$clienteId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImportacoesLoteIdRoute = ImportacoesLoteIdRouteImport.update({
+  id: '/importacoes_/$loteId',
+  path: '/importacoes/$loteId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportarFurtadoRoute = ImportarFurtadoRouteImport.update({
+  id: '/importar_/furtado',
+  path: '/importar/furtado',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analise': typeof AnaliseRoute
+  '/cobrancas': typeof CobrancasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
+  '/processos': typeof ProcessosRoute
+  '/relatorios': typeof RelatoriosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
+  '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
+  '/importar/furtado': typeof ImportarFurtadoRoute
   '/clientes/': typeof ClientesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analise': typeof AnaliseRoute
+  '/cobrancas': typeof CobrancasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
+  '/processos': typeof ProcessosRoute
+  '/relatorios': typeof RelatoriosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
+  '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
+  '/importar/furtado': typeof ImportarFurtadoRoute
   '/clientes': typeof ClientesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analise': typeof AnaliseRoute
+  '/cobrancas': typeof CobrancasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/importacoes': typeof ImportacoesRoute
   '/importar': typeof ImportarRoute
   '/ja-pagos': typeof JaPagosRoute
   '/pagamentos': typeof PagamentosRoute
+  '/processos': typeof ProcessosRoute
+  '/relatorios': typeof RelatoriosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
+  '/importacoes_/$loteId': typeof ImportacoesLoteIdRoute
+  '/importar_/furtado': typeof ImportarFurtadoRoute
   '/clientes/': typeof ClientesIndexRoute
 }
 export interface FileRouteTypes {
@@ -104,46 +149,66 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/analise'
+    | '/cobrancas'
     | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
     | '/pagamentos'
+    | '/processos'
+    | '/relatorios'
     | '/clientes/$clienteId'
+    | '/importacoes/$loteId'
+    | '/importar/furtado'
     | '/clientes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analise'
+    | '/cobrancas'
     | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
     | '/pagamentos'
+    | '/processos'
+    | '/relatorios'
     | '/clientes/$clienteId'
+    | '/importacoes/$loteId'
+    | '/importar/furtado'
     | '/clientes'
   id:
     | '__root__'
     | '/'
     | '/analise'
+    | '/cobrancas'
     | '/configuracoes'
     | '/importacoes'
     | '/importar'
     | '/ja-pagos'
     | '/pagamentos'
+    | '/processos'
+    | '/relatorios'
     | '/clientes/$clienteId'
+    | '/importacoes_/$loteId'
+    | '/importar_/furtado'
     | '/clientes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnaliseRoute: typeof AnaliseRoute
+  CobrancasRoute: typeof CobrancasRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   ImportacoesRoute: typeof ImportacoesRoute
   ImportarRoute: typeof ImportarRoute
   JaPagosRoute: typeof JaPagosRoute
   PagamentosRoute: typeof PagamentosRoute
+  ProcessosRoute: typeof ProcessosRoute
+  RelatoriosRoute: typeof RelatoriosRoute
   ClientesClienteIdRoute: typeof ClientesClienteIdRoute
+  ImportacoesLoteIdRoute: typeof ImportacoesLoteIdRoute
+  ImportarFurtadoRoute: typeof ImportarFurtadoRoute
   ClientesIndexRoute: typeof ClientesIndexRoute
 }
 
@@ -161,6 +226,13 @@ declare module '@tanstack/react-router' {
       path: '/analise'
       fullPath: '/analise'
       preLoaderRoute: typeof AnaliseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cobrancas': {
+      id: '/cobrancas'
+      path: '/cobrancas'
+      fullPath: '/cobrancas'
+      preLoaderRoute: typeof CobrancasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -198,6 +270,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PagamentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/processos': {
+      id: '/processos'
+      path: '/processos'
+      fullPath: '/processos'
+      preLoaderRoute: typeof ProcessosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/relatorios': {
+      id: '/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof RelatoriosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/clientes/': {
       id: '/clientes/'
       path: '/clientes'
@@ -212,18 +298,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientesClienteIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/importacoes_/$loteId': {
+      id: '/importacoes_/$loteId'
+      path: '/importacoes/$loteId'
+      fullPath: '/importacoes/$loteId'
+      preLoaderRoute: typeof ImportacoesLoteIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/importar_/furtado': {
+      id: '/importar_/furtado'
+      path: '/importar/furtado'
+      fullPath: '/importar/furtado'
+      preLoaderRoute: typeof ImportarFurtadoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnaliseRoute: AnaliseRoute,
+  CobrancasRoute: CobrancasRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   ImportacoesRoute: ImportacoesRoute,
   ImportarRoute: ImportarRoute,
   JaPagosRoute: JaPagosRoute,
   PagamentosRoute: PagamentosRoute,
+  ProcessosRoute: ProcessosRoute,
+  RelatoriosRoute: RelatoriosRoute,
   ClientesClienteIdRoute: ClientesClienteIdRoute,
+  ImportacoesLoteIdRoute: ImportacoesLoteIdRoute,
+  ImportarFurtadoRoute: ImportarFurtadoRoute,
   ClientesIndexRoute: ClientesIndexRoute,
 }
 export const routeTree = rootRouteImport

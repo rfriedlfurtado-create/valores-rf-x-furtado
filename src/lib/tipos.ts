@@ -21,6 +21,8 @@ export interface Cliente {
   status: StatusCliente;
   origem_importacao: string | null;
   data_importacao: string | null;
+  /** Escritório que originou o cadastro ('a_confirmar' quando não comprovado). */
+  escritorio_origem: "furtado" | "ricardo_friedl" | "a_confirmar";
   arquivado: boolean;
   deleted_at: string | null;
   created_at: string;
@@ -32,18 +34,33 @@ export interface Cliente {
  * Gravada em `pagamentos.classificacao` (constraint pagamentos_classificacao_check).
  * `null` = ainda não classificada.
  */
-export type ClassificacaoEntrada = "contratuais" | "atrasados" | "sucumbencia";
+export type ClassificacaoEntrada =
+  | "contratuais"
+  | "atrasados"
+  | "sucumbencia"
+  | "implantacao"
+  | "execucao"
+  | "administrativos"
+  | "outros";
 
 export const CLASSIFICACOES_ENTRADA: { value: ClassificacaoEntrada; label: string }[] = [
   { value: "contratuais", label: "Contratuais" },
   { value: "atrasados", label: "Atrasados" },
   { value: "sucumbencia", label: "Sucumbência" },
+  { value: "implantacao", label: "Implantação" },
+  { value: "execucao", label: "Execução" },
+  { value: "administrativos", label: "Administrativos" },
+  { value: "outros", label: "Outros" },
 ];
 
 export const ROTULO_CLASSIFICACAO: Record<ClassificacaoEntrada, string> = {
   contratuais: "Contratuais",
   atrasados: "Atrasados",
   sucumbencia: "Sucumbência",
+  implantacao: "Implantação",
+  execucao: "Execução",
+  administrativos: "Administrativos",
+  outros: "Outros",
 };
 
 /** Entrada financeira: um registro individual de valor vinculado ao cliente. */
@@ -61,6 +78,9 @@ export interface Pagamento {
   chave_importacao: string | null;
   /** Linha do arquivo de origem (rastreabilidade/ordem). */
   linha_importacao: number | null;
+  atendimento_id?: string | null;
+  /** Escritório do recebimento (quando conhecido). */
+  escritorio?: string | null;
 }
 
 export interface VariacaoNome {
@@ -81,6 +101,8 @@ export interface Importacao {
   quantidade_ja_pagos: number;
   quantidade_possiveis: number;
   created_at: string;
+  escritorio?: string | null;
+  modelo?: string | null;
 }
 
 export interface ClienteImportado {

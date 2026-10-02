@@ -24,6 +24,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSistema } from "@/hooks/useSistema";
+import { useIdentificadoresPorCliente } from "@/hooks/useDadosFurtado";
+import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
+import {
+  BadgeEscritorio,
+  clientePassaFiltro,
+  escritoriosDoCliente,
+  useFiltroEscritorio,
+  useVinculosEscritorio,
+} from "@/lib/escritorio";
 import { formatDate } from "@/lib/format";
 import { correspondeBusca } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
@@ -49,9 +58,11 @@ export const Route = createFileRoute("/ja-pagos")({
 
 type OrdenacaoJaPagos = "pago_recente" | "pago_antigo" | "valor_desc" | "valor_asc" | "nome";
 
-
 function JaPagos() {
   const { base, variacoes, carregando } = useSistema();
+  const { filtro } = useFiltroEscritorio();
+  const vinculos = useVinculosEscritorio();
+  const identificadores = useIdentificadoresPorCliente();
   const navigate = useNavigate();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<OrdenacaoJaPagos>("pago_recente");
@@ -59,7 +70,10 @@ function JaPagos() {
   const variacoesPorCliente = useMemo(() => {
     const mapa = new Map<string, string[]>();
     for (const variacao of variacoes) {
-      mapa.set(variacao.cliente_id, [...(mapa.get(variacao.cliente_id) ?? []), variacao.nome_normalizado]);
+      mapa.set(variacao.cliente_id, [
+        ...(mapa.get(variacao.cliente_id) ?? []),
+        variacao.nome_normalizado,
+      ]);
     }
     return mapa;
   }, [variacoes]);
@@ -68,11 +82,16 @@ function JaPagos() {
     if (!base) return [];
 
     // Visão JÁ PAGOS = situação PAGO, derivada da base central (sem cópia do cliente).
-    const resultado: ClienteComTotais[] = base.jaPagos.filter((cliente) =>
-      correspondeBusca(cliente, busca, variacoesPorCliente),
+    const resultado: ClienteComTotais[] = base.jaPagos.filter(
+      (cliente) =>
+        clientePassaFiltro(cliente, filtro, vinculos) &&
+        correspondeBusca(cliente, busca, variacoesPorCliente, identificadores),
     );
 
-    const ordenadores: Record<OrdenacaoJaPagos, (a: ClienteComTotais, b: ClienteComTotais) => number> = {
+    const ordenadores: Record<
+      OrdenacaoJaPagos,
+      (a: ClienteComTotais, b: ClienteComTotais) => number
+    > = {
       pago_recente: (a, b) => b.updated_at.localeCompare(a.updated_at),
       pago_antigo: (a, b) => a.updated_at.localeCompare(b.updated_at),
       valor_desc: (a, b) => b.totalRecebido - a.totalRecebido,
@@ -81,7 +100,7 @@ function JaPagos() {
     };
 
     return [...resultado].sort(ordenadores[ordenacao]);
-  }, [base, busca, ordenacao, variacoesPorCliente]);
+  }, [base, busca, ordenacao, variacoesPorCliente, filtro, vinculos, identificadores]);
 
   if (carregando || !base) {
     return (
@@ -103,20 +122,26 @@ function JaPagos() {
         }.`}
       />
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={busca}
             onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Pesquisar nome..."
+            placeholder="Pesquisar por nome, CPF, processo ou NB..."
             className="h-11 pl-9 text-base"
             aria-label="Pesquisar cliente"
           />
         </div>
 
-        <Select value={ordenacao} onValueChange={(valor) => setOrdenacao(valor as OrdenacaoJaPagos)}>
-          <SelectTrigger className="h-11 lg:w-56"><SelectValue /></SelectTrigger>
+        <FiltroEscritorioSelect />
+        <Select
+          value={ordenacao}
+          onValueChange={(valor) => setOrdenacao(valor as OrdenacaoJaPagos)}
+        >
+          <SelectTrigger className="h-11 lg:w-56">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="pago_recente">Identificado mais recente</SelectItem>
             <SelectItem value="pago_antigo">Identificado mais antigo</SelectItem>
@@ -158,7 +183,14 @@ function JaPagos() {
                     navigate({ to: "/clientes/$clienteId", params: { clienteId: cliente.id } })
                   }
                 >
-                  <TableCell className="font-semibold">{cliente.nome}</TableCell>
+                  <TableCell className="font-semibold">
+                    {cliente.nome}
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {escritoriosDoCliente(cliente, vinculos).map((e) => (
+                        <BadgeEscritorio key={e} escritorio={e} />
+                      ))}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Valor valor={cliente.totalRecebido} tamanho="lg" />
                   </TableCell>
