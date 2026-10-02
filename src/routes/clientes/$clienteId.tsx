@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  ChevronDown,
   FileSpreadsheet,
   History,
   Pencil,
@@ -11,7 +12,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
@@ -184,10 +185,11 @@ function PerfilCliente() {
 
       {revisoesAbertas.length ? <Revisoes perfil={perfil} revisoes={revisoesAbertas} /> : null}
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      {/* Dados pessoais e Contatos: sempre começam recolhidos ao abrir um perfil. */}
+      <div className="grid items-start gap-6 xl:grid-cols-2">
         {SECOES_PERFIL.filter((s) => s.secao === "pessoais" || s.secao === "contatos").map(
           (secao) => (
-            <Secao key={secao.secao} titulo={secao.titulo}>
+            <SecaoRecolhivel key={`${cliente.id}-${secao.secao}`} titulo={secao.titulo}>
               {secao.campos.map((chave) => {
                 const valor =
                   chave === "nome"
@@ -207,7 +209,7 @@ function PerfilCliente() {
                   />
                 );
               })}
-            </Secao>
+            </SecaoRecolhivel>
           ),
         )}
       </div>
@@ -228,6 +230,39 @@ function PerfilCliente() {
 
       <OrigemEHistorico perfil={perfil} />
     </div>
+  );
+}
+
+/** Card que começa recolhido; o cabeçalho expande e recolhe o conteúdo. */
+function SecaoRecolhivel({ titulo, children }: { titulo: string; children: ReactNode }) {
+  const [aberto, setAberto] = useState(false);
+  const id = useId();
+  return (
+    <Card className="gap-0 p-0">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        aria-controls={id}
+        className={cn(
+          "flex w-full items-center justify-between gap-3 rounded-xl px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          aberto && "rounded-b-none border-b border-border",
+        )}
+      >
+        <h2 className="text-base font-semibold">{titulo}</h2>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            aberto && "rotate-180",
+          )}
+          aria-hidden
+        />
+        <span className="sr-only">{aberto ? "Recolher" : "Expandir"}</span>
+      </button>
+      <dl id={id} hidden={!aberto} className="divide-y divide-border">
+        {children}
+      </dl>
+    </Card>
   );
 }
 
