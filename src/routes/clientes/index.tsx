@@ -1,11 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Upload } from "lucide-react";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ChevronRight, Plus, Search, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
-import { BotaoEmAtualizacao } from "@/components/EmAtualizacao";
 import { DialogPagamento } from "@/components/DialogPagamento";
-import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +33,7 @@ import {
   useFiltroEscritorio,
   useVinculosEscritorio,
 } from "@/lib/escritorio";
-import { formatDate } from "@/lib/format";
+import { NAO_INFORMADO } from "@/lib/rf/campos";
 import { correspondeBusca } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -54,21 +52,19 @@ export const Route = createFileRoute("/clientes/")({
   component: Clientes,
 });
 
-type Ordenacao =
-  | "nome"
-  | "valor_desc"
-  | "valor_asc"
-  | "pagamento_recente"
-  | "pagamento_antigo"
-  | "cadastro_recente";
+type Ordenacao = "nome" | "cadastro_recente" | "cadastro_antigo";
+
+const POR_PAGINA = 25;
 
 function Clientes() {
   const { base, variacoes, carregando } = useSistema();
   const { filtro } = useFiltroEscritorio();
   const vinculos = useVinculosEscritorio();
   const identificadores = useIdentificadoresPorCliente();
+  const navigate = useNavigate();
   const [busca, setBusca] = useState("");
-  const [ordenacao, setOrdenacao] = useState<Ordenacao>("cadastro_recente");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("nome");
+  const [pagina, setPagina] = useState(0);
 
   const variacoesPorCliente = useMemo(() => {
     const mapa = new Map<string, string[]>();
@@ -80,28 +76,23 @@ function Clientes() {
     return mapa;
   }, [variacoes]);
 
-  // Apenas clientes em tramitação: não pagos e não excluídos
+  // Uma linha por cliente identificado (os processos ficam dentro do perfil).
   const lista = useMemo(() => {
     if (!base) return [];
-    // Visão CLIENTES = situação EM_TRAMITACAO, derivada da base central.
     const resultado = base.emTramitacao.filter(
       (cliente) =>
         clientePassaFiltro(cliente, filtro, vinculos) &&
         correspondeBusca(cliente, busca, variacoesPorCliente, identificadores),
     );
-
     const ordenadores: Record<Ordenacao, (a: ClienteComTotais, b: ClienteComTotais) => number> = {
       nome: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
-      valor_desc: (a, b) => b.totalRecebido - a.totalRecebido,
-      valor_asc: (a, b) => a.totalRecebido - b.totalRecebido,
-      pagamento_recente: (a, b) => (b.ultimoPagamento ?? "").localeCompare(a.ultimoPagamento ?? ""),
-      pagamento_antigo: (a, b) =>
-        (a.primeiroPagamento ?? "z").localeCompare(b.primeiroPagamento ?? "z"),
       cadastro_recente: (a, b) => b.created_at.localeCompare(a.created_at),
+      cadastro_antigo: (a, b) => a.created_at.localeCompare(b.created_at),
     };
-
     return [...resultado].sort(ordenadores[ordenacao]);
   }, [base, busca, ordenacao, variacoesPorCliente, filtro, vinculos, identificadores]);
+
+  useEffect(() => setPagina(0), [busca, ordenacao, filtro]);
 
   if (carregando || !base) {
     return (
@@ -112,10 +103,17 @@ function Clientes() {
     );
   }
 
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas - 1);
+  const visiveis = lista.slice(paginaAtual * POR_PAGINA, paginaAtual * POR_PAGINA + POR_PAGINA);
+
   const totalEmTramitacao =
     filtro === "todos"
       ? base.indicadores.emTramitacao
       : base.emTramitacao.filter((c) => clientePassaFiltro(c, filtro, vinculos)).length;
+
+  const abrir = (id: string) =>
+    void navigate({ to: "/clientes/$clienteId", params: { clienteId: id } });
 
   return (
     <div>
@@ -132,10 +130,12 @@ function Clientes() {
             </Button>
           }
         />
-        <BotaoEmAtualizacao>
-          <Upload className="size-4" aria-hidden />
-          Importar Clientes
-        </BotaoEmAtualizacao>
+        <Button asChild>
+          <Link to="/importar">
+            <Upload className="size-4" aria-hidden />
+            Importar clientes
+          </Link>
+        </Button>
       </PageHeader>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
@@ -144,23 +144,20 @@ function Clientes() {
           <Input
             value={busca}
             onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Pesquisar por nome, CPF, processo ou NB..."
+            placeholder="Pesquisar por nome ou CPF..."
             className="h-12 pl-10 text-base"
-            aria-label="Pesquisar cliente"
+            aria-label="Pesquisar cliente por nome ou CPF"
           />
         </div>
         <FiltroEscritorioSelect />
         <Select value={ordenacao} onValueChange={(valor) => setOrdenacao(valor as Ordenacao)}>
-          <SelectTrigger className="h-12 lg:w-56">
+          <SelectTrigger className="h-12 lg:w-56" aria-label="Ordenação">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="cadastro_recente">Cadastro mais recente</SelectItem>
             <SelectItem value="nome">Nome (A-Z)</SelectItem>
-            <SelectItem value="valor_desc">Maior valor recebido</SelectItem>
-            <SelectItem value="valor_asc">Menor valor recebido</SelectItem>
-            <SelectItem value="pagamento_recente">Pagamento mais recente</SelectItem>
-            <SelectItem value="pagamento_antigo">Pagamento mais antigo</SelectItem>
+            <SelectItem value="cadastro_recente">Cadastro mais recente</SelectItem>
+            <SelectItem value="cadastro_antigo">Cadastro mais antigo</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -171,61 +168,104 @@ function Clientes() {
           descricao={
             busca
               ? "Nenhum resultado para a pesquisa atual."
-              : "Nenhum cliente em tramitação cadastrado."
+              : "Nenhum cliente em tramitação cadastrado. Use “Importar clientes” para começar."
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="min-w-52">Nome</TableHead>
-                <TableHead className="text-right">Total recebido</TableHead>
-                <TableHead className="text-center">Pagamentos</TableHead>
-                <TableHead>Último pagamento</TableHead>
-                <TableHead>Cadastro</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lista.map((cliente) => (
-                <TableRow key={cliente.id}>
-                  <TableCell className="font-semibold">
-                    {cliente.nome}
-                    <span className="mt-1 flex flex-wrap gap-1">
-                      {escritoriosDoCliente(cliente, vinculos).map((e) => (
-                        <BadgeEscritorio key={e} escritorio={e} />
-                      ))}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Valor valor={cliente.totalRecebido} tamanho="lg" />
-                  </TableCell>
-                  <TableCell className="text-center tabular font-semibold">
-                    {cliente.quantidadePagamentos}
-                  </TableCell>
-                  <TableCell className="tabular text-sm">
-                    {formatDate(cliente.ultimoPagamento)}
-                  </TableCell>
-                  <TableCell className="tabular text-sm">
-                    {formatDate(cliente.created_at)}
-                  </TableCell>
-                  <TableCell>
-                    <div
-                      className="flex items-center justify-end gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <BotaoEmAtualizacao size="sm" variant="outline">
-                        Ver perfil
-                      </BotaoEmAtualizacao>
-                      <BotaoExcluirCliente cliente={cliente} />
-                    </div>
-                  </TableCell>
+        <>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="min-w-64">Nome do cliente</TableHead>
+                  <TableHead className="min-w-40">CPF</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {visiveis.map((cliente) => (
+                  <TableRow
+                    key={cliente.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Abrir perfil de ${cliente.nome}`}
+                    className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+                    onClick={() => abrir(cliente.id)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        abrir(cliente.id);
+                      }
+                    }}
+                  >
+                    <TableCell className="font-semibold">
+                      {cliente.nome}
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {escritoriosDoCliente(cliente, vinculos).map((e) => (
+                          <BadgeEscritorio key={e} escritorio={e} />
+                        ))}
+                      </span>
+                    </TableCell>
+                    <TableCell className="tabular text-sm">
+                      {cliente.cpf?.trim() ? (
+                        cliente.cpf
+                      ) : (
+                        <span className="text-muted-foreground">{NAO_INFORMADO}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div
+                        className="flex items-center justify-end gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <Button asChild size="sm" variant="outline">
+                          <Link
+                            to="/clientes/$clienteId"
+                            params={{ clienteId: cliente.id }}
+                            tabIndex={-1}
+                          >
+                            Ver perfil
+                            <ChevronRight className="size-4" aria-hidden />
+                          </Link>
+                        </Button>
+                        <BotaoExcluirCliente cliente={cliente} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="mt-3 flex flex-col items-center justify-between gap-2 text-sm sm:flex-row">
+            <span className="text-muted-foreground tabular">
+              {paginaAtual * POR_PAGINA + 1}–
+              {Math.min(lista.length, (paginaAtual + 1) * POR_PAGINA)} de {lista.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={paginaAtual === 0}
+                onClick={() => setPagina(paginaAtual - 1)}
+              >
+                Anterior
+              </Button>
+              <span className="tabular text-muted-foreground">
+                Página {paginaAtual + 1} de {totalPaginas}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={paginaAtual >= totalPaginas - 1}
+                onClick={() => setPagina(paginaAtual + 1)}
+              >
+                Próxima
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

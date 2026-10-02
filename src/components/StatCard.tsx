@@ -17,7 +17,7 @@ const TONS: Record<TomStatCard, { icone: string; valor: string }> = {
 export interface StatCardProps {
   titulo: string;
   valor: ReactNode;
-  descricao?: string;
+  descricao?: string | undefined;
   icone: LucideIcon;
   tom?: TomStatCard;
   className?: string;
@@ -38,11 +38,18 @@ export function StatCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {titulo}
         </p>
-        <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", estilo.icone)}>
+        <span
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-lg",
+            estilo.icone,
+          )}
+        >
           <Icone className="size-4" aria-hidden />
         </span>
       </div>
-      <div className={cn("mt-3 text-2xl font-bold tabular tracking-tight", estilo.valor)}>{valor}</div>
+      <div className={cn("mt-3 text-2xl font-bold tabular tracking-tight", estilo.valor)}>
+        {valor}
+      </div>
       {descricao ? <p className="mt-1 text-xs text-muted-foreground">{descricao}</p> : null}
     </Card>
   );

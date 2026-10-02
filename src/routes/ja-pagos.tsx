@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { BotaoEmAtualizacao } from "@/components/EmAtualizacao";
+import { createFileRoute, Link } from "@tanstack/react-router";
+
+import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -201,9 +202,11 @@ function JaPagos() {
                       className="flex items-center justify-end gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <BotaoEmAtualizacao size="sm" variant="outline">
-                        Ver perfil
-                      </BotaoEmAtualizacao>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
+                          Ver perfil
+                        </Link>
+                      </Button>
                       <BotaoExcluirCliente cliente={cliente} />
                     </div>
                   </TableCell>

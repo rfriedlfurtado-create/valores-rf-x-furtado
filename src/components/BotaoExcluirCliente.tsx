@@ -19,7 +19,7 @@ import type { ClienteComTotais } from "@/lib/tipos";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 interface BotaoExcluirClienteProps {
-  cliente: ClienteComTotais;
+  cliente: Pick<ClienteComTotais, "id" | "nome" | "quantidadePagamentos">;
 }
 
 /**

@@ -112,6 +112,9 @@ export const TABELAS_OBSERVADAS = [
   "cobrancas",
   "parcelas",
   "import_lotes",
+  "registro_linhas",
+  "revisoes_rf",
+  "historico_cliente",
 ] as const;
 
 /**

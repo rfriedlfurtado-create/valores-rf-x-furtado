@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TextoPerfilEmAtualizacao } from "@/components/EmAtualizacao";
+import { LinkPerfil } from "@/components/LinkPerfil";
 import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -239,7 +239,7 @@ function HistoricoPagamentos() {
                     {formatDate(pagamento.data_pagamento)}
                   </TableCell>
                   <TableCell>
-                    <TextoPerfilEmAtualizacao>{cliente?.nome}</TextoPerfilEmAtualizacao>
+                    <LinkPerfil clienteId={pagamento.cliente_id}>{cliente?.nome}</LinkPerfil>
                     {pagamento.escritorio ? (
                       <BadgeEscritorio escritorio={pagamento.escritorio} className="ml-2" />
                     ) : null}

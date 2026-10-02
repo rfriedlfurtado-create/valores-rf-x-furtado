@@ -79,6 +79,10 @@ export interface NovoPagamento {
   tipo: TipoPagamento;
   observacao?: string | null;
   usuario_cadastro?: string | null;
+  /** Processo/atendimento ao qual o pagamento pertence (opcional). */
+  atendimento_id?: string | null;
+  /** Implantação, Sucumbência, Atrasados... (opcional). */
+  classificacao?: ClassificacaoEntrada | null;
 }
 
 /**
@@ -106,7 +110,9 @@ export async function registrarPagamento(entrada: NovoPagamento): Promise<void> 
     tipo: entrada.tipo,
     observacao: entrada.observacao?.trim() || null,
     usuario_cadastro: entrada.usuario_cadastro?.trim() || "Sistema",
-  });
+    ...(entrada.atendimento_id ? { atendimento_id: entrada.atendimento_id } : {}),
+    ...(entrada.classificacao ? { classificacao: entrada.classificacao } : {}),
+  } as never);
   if (error) erro(error.message);
 }
 

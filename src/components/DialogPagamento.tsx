@@ -14,22 +14,41 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { registrarPagamento } from "@/lib/acoes";
 import { parseBRL, todayISO } from "@/lib/format";
-import { TIPOS_PAGAMENTO, type ClienteComTotais, type TipoPagamento } from "@/lib/tipos";
+import {
+  CLASSIFICACOES_ENTRADA,
+  TIPOS_PAGAMENTO,
+  type ClassificacaoEntrada,
+  type ClienteComTotais,
+  type TipoPagamento,
+} from "@/lib/tipos";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 
 export interface DialogPagamentoProps {
   /** Quando informado, o cliente fica fixo (uso no perfil). */
-  clienteFixo?: ClienteComTotais;
+  clienteFixo?: Pick<ClienteComTotais, "id" | "nome">;
+  /** Processo/atendimento do pagamento (perfil do cliente). */
+  registro?: { id: string; rotulo: string } | undefined;
   /** Lista para seleção quando não há cliente fixo. */
   clientes?: ClienteComTotais[];
   trigger: ReactNode;
 }
 
-export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogPagamentoProps) {
+export function DialogPagamento({
+  clienteFixo,
+  registro,
+  clientes = [],
+  trigger,
+}: DialogPagamentoProps) {
   const [aberto, setAberto] = useState(false);
   const [clienteId, setClienteId] = useState(clienteFixo?.id ?? "");
   const [valor, setValor] = useState("");
@@ -37,6 +56,7 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
   const [tipo, setTipo] = useState<TipoPagamento>("pix");
   const [observacao, setObservacao] = useState("");
   const [usuario, setUsuario] = useState("");
+  const [classificacao, setClassificacao] = useState<ClassificacaoEntrada | "nenhuma">("nenhuma");
 
   const sincronizar = useSincronizar();
 
@@ -49,6 +69,8 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
         tipo,
         observacao,
         usuario_cadastro: usuario,
+        atendimento_id: registro?.id ?? null,
+        classificacao: classificacao === "nenhuma" ? null : classificacao,
       });
     },
     onSuccess: async () => {
@@ -78,6 +100,9 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
             <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
               <p className="text-xs text-muted-foreground">Cliente</p>
               <p className="text-sm font-semibold">{clienteFixo.nome}</p>
+              {registro ? (
+                <p className="mt-1 text-xs text-muted-foreground">Registro: {registro.rotulo}</p>
+              ) : null}
             </div>
           ) : (
             <div className="grid gap-2">
@@ -122,7 +147,10 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
 
           <div className="grid gap-2">
             <Label htmlFor="pagamento-tipo">Tipo do pagamento</Label>
-            <Select value={tipo} onValueChange={(valorSelecionado) => setTipo(valorSelecionado as TipoPagamento)}>
+            <Select
+              value={tipo}
+              onValueChange={(valorSelecionado) => setTipo(valorSelecionado as TipoPagamento)}
+            >
               <SelectTrigger id="pagamento-tipo">
                 <SelectValue />
               </SelectTrigger>
@@ -135,6 +163,28 @@ export function DialogPagamento({ clienteFixo, clientes = [], trigger }: DialogP
               </SelectContent>
             </Select>
           </div>
+
+          {registro ? (
+            <div className="grid gap-2">
+              <Label htmlFor="pagamento-classificacao">Categoria do pagamento</Label>
+              <Select
+                value={classificacao}
+                onValueChange={(v) => setClassificacao(v as ClassificacaoEntrada | "nenhuma")}
+              >
+                <SelectTrigger id="pagamento-classificacao">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nenhuma">Sem categoria</SelectItem>
+                  {CLASSIFICACOES_ENTRADA.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
 
           <div className="grid gap-2">
             <Label htmlFor="pagamento-usuario">Usuário que cadastrou</Label>

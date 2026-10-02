@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { TextoPerfilEmAtualizacao } from "@/components/EmAtualizacao";
+import { LinkPerfil } from "@/components/LinkPerfil";
 import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardList, Coins, Search } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -178,7 +178,7 @@ function Cobrancas() {
                   {cobrancas.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
-                        <TextoPerfilEmAtualizacao>{nome(c.cliente_id)}</TextoPerfilEmAtualizacao>
+                        <LinkPerfil clienteId={c.cliente_id}>{nome(c.cliente_id)}</LinkPerfil>
                       </TableCell>
                       <TableCell className="max-w-64 text-sm">{c.descricao}</TableCell>
                       <TableCell className="text-right tabular">
@@ -236,7 +236,7 @@ function Cobrancas() {
                     .map((p) => (
                       <TableRow key={p.id}>
                         <TableCell>
-                          <TextoPerfilEmAtualizacao>{nome(p.cliente_id)}</TextoPerfilEmAtualizacao>
+                          <LinkPerfil clienteId={p.cliente_id}>{nome(p.cliente_id)}</LinkPerfil>
                           <span className="block text-xs text-muted-foreground">
                             {cobPorId.get(p.cobranca_id)?.descricao}
                           </span>

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { TextoPerfilEmAtualizacao } from "@/components/EmAtualizacao";
+import { LinkPerfil } from "@/components/LinkPerfil";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -145,9 +145,9 @@ function Processos() {
               {lista.slice(0, 1000).map((a) => (
                 <TableRow key={a.id}>
                   <TableCell>
-                    <TextoPerfilEmAtualizacao>
+                    <LinkPerfil clienteId={a.cliente_id}>
                       {base.porId.get(a.cliente_id)?.nome}
-                    </TextoPerfilEmAtualizacao>
+                    </LinkPerfil>
                   </TableCell>
                   <TableCell className="whitespace-nowrap tabular text-sm">
                     {a.numero_processo ?? "—"}

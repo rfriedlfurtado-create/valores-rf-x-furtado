@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { TextoPerfilEmAtualizacao } from "@/components/EmAtualizacao";
+import { LinkPerfil } from "@/components/LinkPerfil";
 import { AlertTriangle, ArrowRight, Check, Clock, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -171,9 +171,12 @@ export function ModalCorrespondencia({ item, pagamentos, onFechar }: ModalCorres
                 </p>
               )}
 
-              <TextoPerfilEmAtualizacao className="mt-3 inline-block text-sm font-medium text-muted-foreground">
+              <LinkPerfil
+                clienteId={item.clienteEncontrado.id}
+                className="mt-3 inline-block text-sm font-medium text-muted-foreground"
+              >
                 Abrir perfil completo
-              </TextoPerfilEmAtualizacao>
+              </LinkPerfil>
             </div>
 
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/50 px-3 py-2 text-xs text-warning">

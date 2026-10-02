@@ -1,16 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- tabelas novas ainda sem tipos gerados (types.ts) */
-import {
-  avisarEmAtualizacao,
-  BotaoEmAtualizacao,
-  MENSAGEM_EM_ATUALIZACAO,
-} from "@/components/EmAtualizacao";
+import { avisarEmAtualizacao, MENSAGEM_EM_ATUALIZACAO } from "@/components/EmAtualizacao";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, FileSpreadsheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -243,7 +240,9 @@ function HistoricoImportacoes() {
         descricao="Todas as importações realizadas, com o resultado da comparação automática de nomes."
       >
         <FiltroEscritorioSelect className="h-9" />
-        <BotaoEmAtualizacao size="sm">Nova importação</BotaoEmAtualizacao>
+        <Button asChild size="sm">
+          <Link to="/importar">Nova importação</Link>
+        </Button>
       </PageHeader>
 
       <LotesPorEscritorio />

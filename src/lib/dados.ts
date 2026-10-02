@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { LIMIARES_PADRAO, type LimiaresSimilaridade } from "./similarity";
 import { agregarBase, type BaseAgregada } from "./agregacao";
 import { CHAVES_FURTADO } from "./furtado/consultas";
+import { CHAVES_RF } from "./rf/dados";
 import type {
   Cliente,
   ClienteImportado,
@@ -173,4 +174,5 @@ export const CHAVES_DOMINIO = [
   ["correspondencias"],
   ["rejeicoes"],
   ...CHAVES_FURTADO,
+  ...CHAVES_RF,
 ] as const;
