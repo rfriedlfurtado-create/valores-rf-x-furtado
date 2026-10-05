@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { BotaoImportarClientes } from "@/components/DialogImportar";
+import { NumerosProcessos } from "@/components/NumerosProcessos";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,7 @@ import {
   useVinculosEscritorio,
 } from "@/lib/escritorio";
 import { formatDate } from "@/lib/format";
-import { correspondeBusca } from "@/lib/situacao";
+import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
 export const Route = createFileRoute("/ja-pagos")({
@@ -82,7 +83,7 @@ function JaPagos() {
   const lista = useMemo(() => {
     if (!base) return [];
 
-    // Visão JÁ PAGOS = situação PAGO, derivada da base central (sem cópia do cliente).
+    // Visão JÁ PAGOS = clientes com ao menos um processo PAGO (mesmo cadastro, sem cópia).
     const resultado: ClienteComTotais[] = base.jaPagos.filter(
       (cliente) =>
         clientePassaFiltro(cliente, filtro, vinculos) &&
@@ -93,10 +94,10 @@ function JaPagos() {
       OrdenacaoJaPagos,
       (a: ClienteComTotais, b: ClienteComTotais) => number
     > = {
-      pago_recente: (a, b) => b.updated_at.localeCompare(a.updated_at),
-      pago_antigo: (a, b) => a.updated_at.localeCompare(b.updated_at),
-      valor_desc: (a, b) => b.totalRecebido - a.totalRecebido,
-      valor_asc: (a, b) => a.totalRecebido - b.totalRecebido,
+      pago_recente: (a, b) => (b.pagoEm ?? "").localeCompare(a.pagoEm ?? ""),
+      pago_antigo: (a, b) => (a.pagoEm ?? "").localeCompare(b.pagoEm ?? ""),
+      valor_desc: (a, b) => b.totalRecebidoPagos - a.totalRecebidoPagos,
+      valor_asc: (a, b) => a.totalRecebidoPagos - b.totalRecebidoPagos,
       nome: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
     };
 
@@ -116,7 +117,7 @@ function JaPagos() {
     <div>
       <PageHeader
         titulo="Já pagos"
-        descricao={`${base.indicadores.jaPagos} cliente(s) identificado(s) como já pago(s)${
+        descricao={`${base.indicadores.jaPagos} cliente(s) com ${base.indicadores.processosPagos} processo(s) pago(s). O pagamento é marcado por processo: os processos ainda em tramitação do mesmo cliente continuam em CLIENTES${
           base.indicadores.pagosSemValor
             ? ` · ${base.indicadores.pagosSemValor} sem valor informado`
             : ""
@@ -170,6 +171,7 @@ function JaPagos() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="min-w-52">Nome</TableHead>
+                <TableHead className="min-w-56">Processos pagos</TableHead>
                 <TableHead className="text-right">Total recebido</TableHead>
                 <TableHead className="text-center">Pagamentos</TableHead>
                 <TableHead>Pago em</TableHead>
@@ -188,14 +190,20 @@ function JaPagos() {
                       ))}
                     </span>
                   </TableCell>
+                  <TableCell>
+                    <NumerosProcessos
+                      processos={processosDaVisao(cliente.processos, "pagos")}
+                      vazio="Cliente sem processo"
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Valor valor={cliente.totalRecebido} tamanho="lg" />
+                    <Valor valor={cliente.totalRecebidoPagos} tamanho="lg" />
                   </TableCell>
                   <TableCell className="text-center tabular font-semibold">
-                    {cliente.quantidadePagamentos}
+                    {cliente.quantidadePagamentosPagos}
                   </TableCell>
                   <TableCell className="tabular text-sm">
-                    {formatDate(cliente.updated_at)}
+                    {cliente.pagoEm ? formatDate(cliente.pagoEm) : "—"}
                   </TableCell>
                   <TableCell className="tabular text-sm">
                     {formatDate(cliente.created_at)}
@@ -206,7 +214,11 @@ function JaPagos() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Button asChild size="sm" variant="outline">
-                        <Link to="/clientes/$clienteId" params={{ clienteId: cliente.id }}>
+                        <Link
+                          to="/clientes/$clienteId"
+                          params={{ clienteId: cliente.id }}
+                          search={{ visao: "pagos" }}
+                        >
                           Ver perfil
                         </Link>
                       </Button>

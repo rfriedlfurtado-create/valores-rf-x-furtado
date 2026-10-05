@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { BotaoImportarClientes } from "@/components/DialogImportar";
+import { NumerosProcessos } from "@/components/NumerosProcessos";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ import {
   useVinculosEscritorio,
 } from "@/lib/escritorio";
 import { NAO_INFORMADO } from "@/lib/rf/campos";
-import { correspondeBusca } from "@/lib/situacao";
+import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
 export const Route = createFileRoute("/clientes/")({
@@ -114,7 +115,11 @@ function Clientes() {
       : base.emTramitacao.filter((c) => clientePassaFiltro(c, filtro, vinculos)).length;
 
   const abrir = (id: string) =>
-    void navigate({ to: "/clientes/$clienteId", params: { clienteId: id } });
+    void navigate({
+      to: "/clientes/$clienteId",
+      params: { clienteId: id },
+      search: { visao: "clientes" },
+    });
 
   return (
     <div>
@@ -176,6 +181,7 @@ function Clientes() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="min-w-64">Nome do cliente</TableHead>
                   <TableHead className="min-w-40">CPF</TableHead>
+                  <TableHead className="min-w-56">Processos em tramitação</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -212,6 +218,11 @@ function Clientes() {
                       )}
                     </TableCell>
                     <TableCell>
+                      <NumerosProcessos
+                        processos={processosDaVisao(cliente.processos, "clientes")}
+                      />
+                    </TableCell>
+                    <TableCell>
                       <div
                         className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
@@ -221,6 +232,7 @@ function Clientes() {
                           <Link
                             to="/clientes/$clienteId"
                             params={{ clienteId: cliente.id }}
+                            search={{ visao: "clientes" }}
                             tabIndex={-1}
                           >
                             Ver perfil

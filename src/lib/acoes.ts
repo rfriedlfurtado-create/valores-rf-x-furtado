@@ -7,6 +7,7 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { db } from "./furtado/persistencia";
 import { chaveParRejeitado, normalizarNome, type LimiaresSimilaridade } from "./similarity";
 
 import type { ClassificacaoEntrada, Cliente, TipoPagamento } from "./tipos";
@@ -69,6 +70,39 @@ export async function reativarCliente(id: string): Promise<void> {
     .from("clientes")
     .update({ arquivado: false, status: "ativo", deleted_at: null })
     .eq("id", id);
+  if (error) erro(error.message);
+}
+
+/**
+ * Pagamento POR PROCESSO: marca (ou reabre) UM processo. Os demais processos
+ * do cliente mantêm a sua situação; o cadastro do cliente é sempre o mesmo.
+ */
+export async function definirProcessoPago(atendimentoId: string, pago: boolean): Promise<void> {
+  const { error } = await db.rpc("definir_processo_pago", {
+    p_atendimento: atendimentoId,
+    p_pago: pago,
+  });
+  if (error) erro(error.message);
+}
+
+/** Cliente sem processo: a situação é a do próprio cadastro. */
+export async function definirClientePago(clienteId: string, pago: boolean): Promise<void> {
+  const { error } = await db.rpc("definir_cliente_pago", {
+    p_cliente: clienteId,
+    p_pago: pago,
+  });
+  if (error) erro(error.message);
+}
+
+/** Vincula um valor recebido a um processo do mesmo cliente (ou desfaz o vínculo). */
+export async function vincularEntradaProcesso(
+  entradaId: string,
+  atendimentoId: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("pagamentos")
+    .update({ atendimento_id: atendimentoId } as never)
+    .eq("id", entradaId);
   if (error) erro(error.message);
 }
 

@@ -121,3 +121,58 @@ describe("busca única", () => {
     expect(correspondeBusca(c, "")).toBe(true);
   });
 });
+
+describe("pagamento por processo", () => {
+  const proc = (id: string, cliente_id: string, pago: boolean) => ({
+    id,
+    cliente_id,
+    numero: id,
+    tipo_acao: null,
+    pago,
+    pago_em: pago ? "2026-10-01T00:00:00Z" : null,
+  });
+
+  test("cliente com processos pagos e não pagos aparece nas duas visões (mesmo cadastro)", () => {
+    const misto = cliente({ nome: "Misto" });
+    const soPago = cliente({ nome: "Só pago", status: "pago" });
+    const semProcesso = cliente({ nome: "Sem processo" });
+    const pagos = [
+      { ...pagamento(misto.id, 1000), atendimento_id: "m1" },
+      { ...pagamento(misto.id, 300), atendimento_id: "m2" },
+    ];
+    const base = agregarBase([misto, soPago, semProcesso], pagos, new Date(), [
+      proc("m1", misto.id, true),
+      proc("m2", misto.id, false),
+      proc("s1", soPago.id, true),
+    ]);
+
+    expect(base.emTramitacao.map((c) => c.id).sort()).toEqual([misto.id, semProcesso.id].sort());
+    expect(base.jaPagos.map((c) => c.id).sort()).toEqual([misto.id, soPago.id].sort());
+    // O mesmo objeto de cliente nas duas visões (nenhuma cópia).
+    expect(base.emTramitacao.find((c) => c.id === misto.id)).toBe(base.porId.get(misto.id));
+
+    // JÁ PAGOS soma só os valores dos processos pagos — não mistura.
+    const m = base.porId.get(misto.id)!;
+    expect(m.totalRecebidoPagos).toBe(1000);
+    expect(m.totalRecebido).toBe(1300);
+    expect(m.pagoEm).toBe("2026-10-01T00:00:00Z");
+
+    expect(base.indicadores).toMatchObject({
+      totalClientes: 3,
+      emTramitacao: 2,
+      jaPagos: 2,
+      processosPagos: 2,
+      processosEmTramitacao: 2,
+      valorRecebidoDePagos: 1000,
+      pagosSemValor: 1,
+    });
+  });
+
+  test("valor sem processo não entra nos totais dos processos pagos", () => {
+    const c = cliente({ nome: "Ana" });
+    const base = agregarBase([c], [{ ...pagamento(c.id, 50), atendimento_id: null }], new Date(), [
+      proc("a1", c.id, true),
+    ]);
+    expect(base.porId.get(c.id)!.totalRecebidoPagos).toBe(0);
+  });
+});

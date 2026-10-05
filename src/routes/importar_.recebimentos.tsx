@@ -107,6 +107,7 @@ const TOM_RESULTADO: Record<ResultadoRecebimento, "sucesso" | "neutro" | "alerta
   valor_invalido: "perigo",
   marcado_pago: "alerta",
   ja_pago: "neutro",
+  processo_nao_definido: "alerta",
 };
 
 function ImportarRecebimentos() {
@@ -118,6 +119,8 @@ function ImportarRecebimentos() {
   const [planilha, setPlanilha] = useState<PlanilhaRecebimentos | null>(null);
   const [base, setBase] = useState<BaseIdentificacao | null>(null);
   const [vinculos, setVinculos] = useState<Map<number, string>>(new Map());
+  /** Processo escolhido na prévia (cliente com vários processos), por linha. */
+  const [escolhidos, setEscolhidos] = useState<Map<number, string>>(new Map());
   const [classificacoes, setClassificacoes] = useState<Map<string, ClassificacaoEntrada | null>>(
     new Map(),
   );
@@ -143,9 +146,16 @@ function ImportarRecebimentos() {
   const itens: ItemRecebimento[] = useMemo(
     () =>
       planilha && base
-        ? montarItens(planilha.linhas, identificacoes, base.processos, classificacoes, arquivo)
+        ? montarItens(
+            planilha.linhas,
+            identificacoes,
+            base.processos,
+            classificacoes,
+            arquivo,
+            escolhidos,
+          )
         : [],
-    [planilha, base, identificacoes, classificacoes, arquivo],
+    [planilha, base, identificacoes, classificacoes, arquivo, escolhidos],
   );
 
   const resumo = useMemo(
@@ -164,7 +174,13 @@ function ImportarRecebimentos() {
   );
 
   const simular = useCallback(
-    async (p: PlanilhaRecebimentos, b: BaseIdentificacao, v: Map<number, string>, nome: string) => {
+    async (
+      p: PlanilhaRecebimentos,
+      b: BaseIdentificacao,
+      v: Map<number, string>,
+      nome: string,
+      esc: Map<number, string> = new Map(),
+    ) => {
       setEtapa("analisando");
       setErro(null);
       try {
@@ -172,7 +188,7 @@ function ImportarRecebimentos() {
         const ids = new Map(
           p.linhas.map((l) => [l.linha, identificarLinha(l, ind, v.get(l.linha))]),
         );
-        const its = montarItens(p.linhas, ids, b.processos, new Map(), nome);
+        const its = montarItens(p.linhas, ids, b.processos, new Map(), nome, esc);
         setResultados(await simularRecebimentos(its, nome, p.aba));
         setEtapa("previa");
       } catch (e) {
@@ -198,6 +214,7 @@ function ImportarRecebimentos() {
       setPlanilha(p);
       setBase(b);
       setVinculos(new Map());
+      setEscolhidos(new Map());
       setClassificacoes(new Map());
       await simular(p, b, new Map(), file.name);
     } catch (e) {
@@ -224,14 +241,31 @@ function ImportarRecebimentos() {
     if (clienteId) novo.set(linha, clienteId);
     else novo.delete(linha);
     setVinculos(novo);
-    void simular(planilha, base, novo, arquivo);
+    void simular(planilha, base, novo, arquivo, escolhidos);
   }
+
+  function escolherProcesso(linha: number, atendimentoId: string) {
+    if (!planilha || !base) return;
+    const novo = new Map(escolhidos).set(linha, atendimentoId);
+    setEscolhidos(novo);
+    void simular(planilha, base, vinculos, arquivo, novo);
+  }
+
+  const processosPorCliente = useMemo(() => {
+    const m = new Map<string, BaseIdentificacao["processos"]>();
+    for (const p of base?.processos ?? []) m.set(p.cliente_id, [...(m.get(p.cliente_id) ?? []), p]);
+    return m;
+  }, [base]);
+  const aEscolher = itens.filter(
+    (i) => !i.atendimento_id && (processosPorCliente.get(i.cliente_id)?.length ?? 0) > 1,
+  ).length;
 
   function reiniciar() {
     setEtapa("arquivo");
     setPlanilha(null);
     setResultados([]);
     setVinculos(new Map());
+    setEscolhidos(new Map());
     setClassificacoes(new Map());
     setRelatorio(null);
     setErro(null);
@@ -278,7 +312,7 @@ function ImportarRecebimentos() {
       toast.success(
         `Importação concluída: ${final.valoresNovos} valor(es) registrado(s)` +
           (final.clientesMovidos
-            ? `, ${final.clientesMovidos} cliente(s) movido(s) para JÁ PAGOS.`
+            ? `, ${final.clientesMovidos} processo(s) movido(s) para JÁ PAGOS.`
             : "."),
       );
       if (revisao.length === 0 && planilha.pendentes.length === 0) {
@@ -385,7 +419,11 @@ function ImportarRecebimentos() {
                 Cada valor vira um recebimento próprio — várias linhas do mesmo cliente = um perfil.
               </li>
               <li>Reimportar o mesmo arquivo não duplica valores.</li>
-              <li>O cliente passa de CLIENTES para JÁ PAGOS, com o perfil completo preservado.</li>
+              <li>
+                O pagamento é marcado por PROCESSO: o processo da linha (pela Pasta ou Número, ou o
+                único processo do cliente) passa para JÁ PAGOS; os demais processos do mesmo cliente
+                continuam em CLIENTES. Cliente com vários processos: escolha o processo na prévia.
+              </li>
             </ul>
           </Card>
         </div>
@@ -445,7 +483,9 @@ function ImportarRecebimentos() {
               valor={resumo.clientesIdentificados}
               icone={UserCheck}
               tom="info"
-              descricao={`${resumo.clientesMovidos} vão para JÁ PAGOS · ${resumo.clientesJaPagos} já estavam`}
+              descricao={`${resumo.clientesMovidos} processo(s) vão para JÁ PAGOS${
+                aEscolher ? ` · ${aEscolher} linha(s): escolha o processo` : ""
+              }`}
             />
             <StatCard
               titulo="Valores novos"
@@ -506,7 +546,8 @@ function ImportarRecebimentos() {
                 itens={itens}
                 resultadoPorItem={resultadoPorItem}
                 nomeCliente={(id) => clientePorId.get(id)?.nome ?? id}
-                statusCliente={(id) => clientePorId.get(id)?.status}
+                processosDoCliente={(id) => processosPorCliente.get(id) ?? []}
+                escolherProcesso={escolherProcesso}
                 reclamante={(linha) =>
                   planilha.linhas.find((l) => l.linha === linha)?.reclamante ?? ""
                 }
@@ -595,7 +636,7 @@ function ImportarRecebimentos() {
               <p className="text-base font-semibold">Importação concluída</p>
               <p className="text-sm text-muted-foreground">
                 {relatorio.valoresNovos} valor(es) registrado(s) · total{" "}
-                {formatBRL(relatorio.totalNovo)} · {relatorio.clientesMovidos} cliente(s) movido(s)
+                {formatBRL(relatorio.totalNovo)} · {relatorio.clientesMovidos} processo(s) movido(s)
                 para JÁ PAGOS · {relatorio.valoresJaRegistrados} já registrado(s)
                 {relatorio.clientesSemValor
                   ? ` · ${relatorio.clientesSemValor} linha(s) sem valor — lance os valores no perfil do cliente`
@@ -640,14 +681,16 @@ function TabelaValores({
   itens,
   resultadoPorItem,
   nomeCliente,
-  statusCliente,
+  processosDoCliente,
+  escolherProcesso,
   reclamante,
   classificar,
 }: {
   itens: ItemRecebimento[];
   resultadoPorItem: Map<string, LinhaResultado>;
   nomeCliente: (id: string) => string;
-  statusCliente: (id: string) => string | undefined;
+  processosDoCliente: (id: string) => BaseIdentificacao["processos"];
+  escolherProcesso: (linha: number, atendimentoId: string) => void;
   reclamante: (linha: number) => string;
   classificar: (linha: number, indice: number, c: ClassificacaoEntrada | null) => void;
 }) {
@@ -685,9 +728,6 @@ function TabelaValores({
                     <span className="block text-xs text-muted-foreground">
                       → {nomeCliente(i.cliente_id)}
                     </span>
-                  ) : null}
-                  {statusCliente(i.cliente_id) === "pago" ? (
-                    <span className="block text-xs text-muted-foreground">Já em JÁ PAGOS</span>
                   ) : null}
                 </TableCell>
                 <TableCell className="text-right tabular font-semibold">
@@ -733,8 +773,12 @@ function TabelaValores({
                     </Select>
                   )}
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {i.atendimento_id ? "Vinculado" : "—"}
+                <TableCell className="text-xs">
+                  <CelulaProcesso
+                    item={i}
+                    processos={processosDoCliente(i.cliente_id)}
+                    escolher={(id) => escolherProcesso(i.linha, id)}
+                  />
                 </TableCell>
                 <TableCell>
                   {r ? (
@@ -752,6 +796,48 @@ function TabelaValores({
         </TableBody>
       </Table>
     </Card>
+  );
+}
+
+/** Processo que recebe a linha (o pagamento é marcado por processo). */
+function CelulaProcesso({
+  item,
+  processos,
+  escolher,
+}: {
+  item: ItemRecebimento;
+  processos: BaseIdentificacao["processos"];
+  escolher: (atendimentoId: string) => void;
+}) {
+  const rotulo = (p: BaseIdentificacao["processos"][number]) =>
+    `${p.numero || "Sem número"}${p.tipo_acao ? ` · ${p.tipo_acao}` : ""}`;
+  if (processos.length === 0)
+    return <span className="text-muted-foreground">Cliente sem processo</span>;
+  const atual = processos.find((p) => p.id === item.atendimento_id);
+  if (processos.length === 1 && atual)
+    return (
+      <span className="tabular">
+        {rotulo(atual)}
+        {atual.pago ? <span className="block text-muted-foreground">Já em JÁ PAGOS</span> : null}
+      </span>
+    );
+  return (
+    <Select value={item.atendimento_id ?? ""} onValueChange={escolher}>
+      <SelectTrigger
+        className={cn("h-8 min-w-48", !item.atendimento_id && "border-warning text-warning")}
+        aria-label={`Processo da linha ${item.linha}`}
+      >
+        <SelectValue placeholder="Escolha o processo…" />
+      </SelectTrigger>
+      <SelectContent>
+        {processos.map((p) => (
+          <SelectItem key={p.id} value={p.id}>
+            {rotulo(p)}
+            {p.pago ? " (já pago)" : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

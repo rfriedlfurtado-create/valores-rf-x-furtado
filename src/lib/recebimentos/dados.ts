@@ -57,7 +57,7 @@ export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
     todas<any>((de, ate) =>
       db
         .from("atendimentos")
-        .select("id,cliente_id,processo_digitos,numero_processo,dados_rf")
+        .select("id,cliente_id,processo_digitos,numero_processo,servico,dados_rf,pago")
         .is("deleted_at", null)
         .order("id")
         .range(de, ate),
@@ -69,6 +69,9 @@ export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
     numero_digitos:
       a.processo_digitos || somenteDigitos(a.dados_rf?.numero ?? a.numero_processo ?? "") || null,
     pasta: a.dados_rf?.pasta ?? null,
+    numero: a.dados_rf?.numero || a.numero_processo || null,
+    tipo_acao: a.dados_rf?.tipo_acao || a.servico || null,
+    pago: Boolean(a.pago),
   }));
   return { clientes, variacoes, processos };
 }
@@ -80,15 +83,18 @@ export type ResultadoRecebimento =
   | "cliente_indisponivel"
   | "valor_invalido"
   | "marcado_pago"
-  | "ja_pago";
+  | "ja_pago"
+  | "processo_nao_definido";
 
 export interface LinhaResultado {
   linha: number;
   cliente_id: string;
   chave: string;
   resultado: ResultadoRecebimento;
+  /** O processo (ou o cliente sem processo) foi para JÁ PAGOS. */
   movido: boolean;
   pagamento_id: string | null;
+  atendimento_id?: string | null;
 }
 
 export const ROTULO_RESULTADO: Record<ResultadoRecebimento, string> = {
@@ -98,7 +104,8 @@ export const ROTULO_RESULTADO: Record<ResultadoRecebimento, string> = {
   cliente_indisponivel: "Cliente indisponível",
   valor_invalido: "Valor inválido",
   marcado_pago: "Sem valor — lançar no perfil",
-  ja_pago: "Sem valor — já estava em JÁ PAGOS",
+  ja_pago: "Sem valor — processo já estava em JÁ PAGOS",
+  processo_nao_definido: "Escolha o processo",
 };
 
 /** Itens por chamada (cada chamada é uma transação). */

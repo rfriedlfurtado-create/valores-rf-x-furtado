@@ -4,12 +4,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CheckCircle2,
   ChevronDown,
   FileSpreadsheet,
   History,
   Pencil,
   Phone,
   Plus,
+  RotateCcw,
   X,
 } from "lucide-react";
 import { useId, useMemo, useState, type ReactNode } from "react";
@@ -60,7 +62,12 @@ import {
   valorInterpretado,
   valorParaEdicao,
 } from "@/lib/rf/valores";
-import { classificarEntrada } from "@/lib/acoes";
+import {
+  classificarEntrada,
+  definirClientePago,
+  definirProcessoPago,
+  vincularEntradaProcesso,
+} from "@/lib/acoes";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 import { fraseQuantidadeEntradas, resumirEntradas } from "@/lib/situacao";
 import {
@@ -72,8 +79,14 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/clientes/$clienteId")({
-  validateSearch: (search: Record<string, unknown>): { registro?: string } =>
-    typeof search["registro"] === "string" ? { registro: search["registro"] } : {},
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { registro?: string; visao?: "clientes" | "pagos" } => ({
+    ...(typeof search["registro"] === "string" ? { registro: search["registro"] } : {}),
+    ...(search["visao"] === "clientes" || search["visao"] === "pagos"
+      ? { visao: search["visao"] }
+      : {}),
+  }),
   head: () => ({
     meta: [{ title: "Perfil do cliente — Base de Pagamentos" }],
   }),
@@ -105,9 +118,14 @@ function rotuloRegistro(r: RegistroRF): string {
 
 // ---------------------------------------------------------------------------
 
+/** Opção do seletor de processos para valores sem processo vinculado. */
+const SEM_PROCESSO = "sem-processo";
+
+type Visao = "clientes" | "pagos";
+
 function PerfilCliente() {
   const { clienteId } = Route.useParams();
-  const { registro: registroSelecionado } = Route.useSearch();
+  const { registro: registroBuscado, visao } = Route.useSearch();
   const navigate = useNavigate();
   const { data: perfil, isLoading, error } = useQuery(perfilRFQuery(clienteId));
   const vinculos = useVinculosEscritorio();
@@ -123,7 +141,7 @@ function PerfilCliente() {
   if (error || !perfil) {
     return (
       <div>
-        <Voltar />
+        <Voltar visao={visao} />
         <SecaoVazia
           titulo={error ? "Não foi possível carregar o perfil" : "Cliente não encontrado"}
           descricao={error ? (error as Error).message : "O cliente pode ter sido excluído."}
@@ -133,14 +151,50 @@ function PerfilCliente() {
   }
 
   const { cliente } = perfil;
-  const registroAtual =
-    perfil.registros.find((r) => r.id === registroSelecionado) ?? perfil.registros[0] ?? null;
-  const revisoesAbertas = perfil.revisoes.filter((r) => r.status === "aberta");
+  const todos = perfil.registros;
+  // Visão de origem: CLIENTES mostra os processos não pagos; JÁ PAGOS, os pagos.
+  const daVisao = visao ? todos.filter((r) => (visao === "pagos" ? r.pago : !r.pago)) : todos;
+  const visiveis = daVisao.length ? daVisao : todos;
+  const idsProcessos = new Set(todos.map((r) => r.id));
+  const valoresSemProcesso = perfil.pagamentos.filter(
+    (p) => !p.atendimento_id || !idsProcessos.has(p.atendimento_id),
+  );
+  const opcoes = [
+    ...visiveis.map((r) => r.id),
+    ...(valoresSemProcesso.length ? [SEM_PROCESSO] : []),
+  ];
+  // Um processo só: selecionado automaticamente. Vários: o escolhido (ou o primeiro).
+  const selecionado =
+    registroBuscado && opcoes.includes(registroBuscado) ? registroBuscado : (opcoes[0] ?? null);
+  const registroAtual = todos.find((r) => r.id === selecionado) ?? null;
+  const revisoesAbertas = perfil.revisoes.filter(
+    (r) => r.status === "aberta" && (!r.atendimento_id || r.atendimento_id === registroAtual?.id),
+  );
+  const pagamentosSelecionados =
+    selecionado === SEM_PROCESSO
+      ? valoresSemProcesso
+      : registroAtual
+        ? perfil.pagamentos.filter((p) => p.atendimento_id === registroAtual.id)
+        : todos.length === 0
+          ? perfil.pagamentos
+          : [];
+
+  const qtdPagos = todos.filter((r) => r.pago).length;
+  const qtdAbertos = todos.length - qtdPagos;
+
+  const ir = (busca: { registro?: string; visao?: Visao }) =>
+    void navigate({
+      to: "/clientes/$clienteId",
+      params: { clienteId },
+      search: busca,
+      replace: true,
+      resetScroll: false,
+    });
 
   return (
     <div className="space-y-6">
       <div>
-        <Voltar />
+        <Voltar visao={visao} />
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -165,24 +219,21 @@ function PerfilCliente() {
                 <BadgeEscritorio key={e} escritorio={e} completo />
               ))}
               {cliente.deleted_at ? <BadgeStatus texto="Arquivado" tom="neutro" /> : null}
-              {cliente.status === "pago" ? <BadgeStatus texto="Já pago" tom="sucesso" /> : null}
+              {todos.length ? (
+                <>
+                  {qtdPagos ? (
+                    <BadgeStatus texto={`${qtdPagos} processo(s) pago(s)`} tom="sucesso" />
+                  ) : null}
+                  {qtdAbertos ? (
+                    <BadgeStatus texto={`${qtdAbertos} em tramitação`} tom="neutro" />
+                  ) : null}
+                </>
+              ) : cliente.status === "pago" ? (
+                <BadgeStatus texto="Já pago" tom="sucesso" />
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <DialogPagamento
-              clienteFixo={cliente}
-              registro={
-                registroAtual
-                  ? { id: registroAtual.id, rotulo: rotuloRegistro(registroAtual) }
-                  : undefined
-              }
-              trigger={
-                <Button variant="outline">
-                  <Plus className="size-4" aria-hidden />
-                  Registrar pagamento
-                </Button>
-              }
-            />
             <BotaoExcluirCliente
               cliente={{
                 id: cliente.id,
@@ -194,38 +245,37 @@ function PerfilCliente() {
         </div>
       </div>
 
+      {/* PROCESSOS logo abaixo do nome e CPF: escolhe o processo exibido no perfil. */}
+      <SecaoProcessos
+        perfil={perfil}
+        visao={visao}
+        visiveis={visiveis}
+        foraDaVisao={visao ? todos.length - daVisao.length : 0}
+        semVisao={Boolean(visao) && daVisao.length === 0}
+        valoresSemProcesso={valoresSemProcesso.length}
+        selecionado={selecionado}
+        selecionar={(id) => ir({ registro: id, ...(visao ? { visao } : {}) })}
+        trocarVisao={(v) => ir(v ? { visao: v } : {})}
+      />
+
       {revisoesAbertas.length ? <Revisoes perfil={perfil} revisoes={revisoesAbertas} /> : null}
 
-      {/* Blocos expansíveis: informações principais sempre visíveis; secundárias ao expandir. */}
-      <BlocoCliente
-        key={`${cliente.id}-identificacao`}
+      {registroAtual ? (
+        <BlocoInterno key={`${registroAtual.id}-interno`} registro={registroAtual} />
+      ) : null}
+
+      <BlocoValoresRecebidos
+        key={`${cliente.id}-${selecionado ?? "todos"}-valores`}
         perfil={perfil}
-        secao="identificacao"
-        inicialAberto
+        pagamentos={pagamentosSelecionados}
+        registro={registroAtual}
+        semProcesso={selecionado === SEM_PROCESSO}
       />
+
+      <BlocoCliente key={`${cliente.id}-identificacao`} perfil={perfil} secao="identificacao" />
       <BlocoCliente key={`${cliente.id}-contato`} perfil={perfil} secao="contato" />
 
-      <BlocoProcessos
-        key={`${cliente.id}-processos`}
-        perfil={perfil}
-        selecionado={registroAtual?.id ?? null}
-        abertoInicial={registroSelecionado ?? null}
-        selecionar={(id) =>
-          void navigate({
-            to: "/clientes/$clienteId",
-            params: { clienteId },
-            search: { registro: id },
-            replace: true,
-            resetScroll: false,
-          })
-        }
-      />
-
-      <BlocoInterno key={`${cliente.id}-interno`} perfil={perfil} />
-
-      <BlocoValoresRecebidos key={`${cliente.id}-valores`} perfil={perfil} />
-
-      <OrigemEHistorico perfil={perfil} />
+      <OrigemEHistorico perfil={perfil} registro={registroAtual} />
     </div>
   );
 }
@@ -280,13 +330,20 @@ function CamposNaoPreenchidos({
   );
 }
 
-function Voltar() {
+function Voltar({ visao }: { visao?: Visao | undefined }) {
   return (
     <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2">
-      <Link to="/clientes">
-        <ArrowLeft className="size-4" aria-hidden />
-        Clientes
-      </Link>
+      {visao === "pagos" ? (
+        <Link to="/ja-pagos">
+          <ArrowLeft className="size-4" aria-hidden />
+          Já pagos
+        </Link>
+      ) : (
+        <Link to="/clientes">
+          <ArrowLeft className="size-4" aria-hidden />
+          Clientes
+        </Link>
+      )}
     </Button>
   );
 }
@@ -544,7 +601,7 @@ function BlocoCliente({
 }
 
 // ---------------------------------------------------------------------------
-// Processos (um cliente pode ter vários)
+// Processos (um cliente pode ter vários; cada um com a sua situação de pagamento)
 // ---------------------------------------------------------------------------
 
 function linhasPorRegistro(perfil: PerfilRF) {
@@ -567,228 +624,354 @@ function salvarCampoRegistro(r: RegistroRF, chave: ChaveCampo) {
     });
 }
 
-function BlocoProcessos({
+const ROTULO_VISAO: Record<Visao, string> = { clientes: "CLIENTES", pagos: "JÁ PAGOS" };
+
+function SecaoProcessos({
   perfil,
+  visao,
+  visiveis,
+  foraDaVisao,
+  semVisao,
+  valoresSemProcesso,
   selecionado,
-  abertoInicial,
   selecionar,
+  trocarVisao,
 }: {
   perfil: PerfilRF;
-  /** Processo usado no botão "Registrar pagamento" do topo (destacado). */
+  visao: Visao | undefined;
+  /** Processos exibidos (os da visão de origem). */
+  visiveis: RegistroRF[];
+  /** Processos do cliente que estão na outra visão. */
+  foraDaVisao: number;
+  /** A visão pedida não tem processos (exibindo todos). */
+  semVisao: boolean;
+  valoresSemProcesso: number;
   selecionado: string | null;
-  /** Processo aberto ao carregar (link com ?registro=). */
-  abertoInicial: string | null;
   selecionar: (id: string) => void;
+  trocarVisao: (visao: Visao | undefined) => void;
 }) {
-  const bloco = blocoPerfil("processo");
+  const sincronizar = useSincronizar();
   const linhas = useMemo(() => linhasPorRegistro(perfil), [perfil]);
-  const [abertos, setAbertos] = useState<Set<string>>(
-    () => new Set(abertoInicial ? [abertoInicial] : []),
-  );
-  const total = perfil.registros.length;
+  const { cliente } = perfil;
+  const registro = perfil.registros.find((r) => r.id === selecionado) ?? null;
+  const outra: Visao = visao === "pagos" ? "clientes" : "pagos";
 
-  const resumo =
-    total === 0 ? (
-      <span>Nenhum processo registrado.</span>
-    ) : (
-      <ResumoLinhas
-        itens={[
-          ...perfil.registros.slice(0, 3).map((r) => {
-            const d = dadosDoRegistro(r);
-            return resumoDoBloco(bloco.campos, (c) => d[c]).join(" · ") || "Sem número";
-          }),
-          ...(total > 3 ? [`+ ${total - 3} processo(s)`] : []),
-        ]}
-      />
-    );
+  const mutacaoCliente = useMutation({
+    mutationFn: (pago: boolean) => definirClientePago(cliente.id, pago),
+    onSuccess: async (_, pago) => {
+      await sincronizar(EVENTOS.CLIENTE_MARCADO_COMO_PAGO);
+      toast.success(pago ? "Cliente movido para JÁ PAGOS." : "Cliente voltou para CLIENTES.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const titulo =
+    visao === "pagos"
+      ? "Processos pagos"
+      : visao === "clientes"
+        ? "Processos em tramitação"
+        : "Processos";
 
   return (
-    <BlocoExpansivel titulo={`Processos (${total})`} inicialAberto resumo={resumo}>
-      {total === 0 ? (
-        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-          Nenhum processo ou atendimento registrado.
+    <Card className="gap-0 p-0">
+      <div className="flex flex-col gap-1 border-b border-border px-5 py-4">
+        <h2 className="text-base font-semibold">
+          {titulo} ({visiveis.length})
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {perfil.registros.length === 0
+            ? "Nenhum processo registrado para este cliente."
+            : visiveis.length > 1
+              ? "Selecione um processo pelo número. Todas as informações abaixo passam a mostrar somente o processo selecionado."
+              : "As informações abaixo são somente deste processo."}
+        </p>
+        {semVisao ? (
+          <p className="text-xs text-warning">
+            Nenhum processo deste cliente está em {visao ? ROTULO_VISAO[visao] : ""} — exibindo
+            todos os processos.
+          </p>
+        ) : null}
+        {foraDaVisao > 0 && !semVisao ? (
+          <p className="text-xs text-muted-foreground">
+            Este cliente também tem {foraDaVisao} processo(s) em {ROTULO_VISAO[outra]} (mesmo
+            cadastro).{" "}
+            <button
+              type="button"
+              className="font-semibold text-primary underline-offset-2 hover:underline"
+              onClick={() => trocarVisao(outra)}
+            >
+              Ver processos em {ROTULO_VISAO[outra]}
+            </button>{" "}
+            ·{" "}
+            <button
+              type="button"
+              className="font-semibold text-primary underline-offset-2 hover:underline"
+              onClick={() => trocarVisao(undefined)}
+            >
+              Ver todos
+            </button>
+          </p>
+        ) : null}
+      </div>
+
+      {perfil.registros.length === 0 ? (
+        <div className="flex flex-col gap-3 px-5 py-5 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground">
+            Cliente sem processo: a situação de pagamento é a do próprio cadastro (
+            {cliente.status === "pago" ? "JÁ PAGOS" : "CLIENTES"}).
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={mutacaoCliente.isPending || Boolean(cliente.deleted_at)}
+            onClick={() => mutacaoCliente.mutate(cliente.status !== "pago")}
+          >
+            {cliente.status === "pago" ? (
+              <>
+                <RotateCcw className="size-4" aria-hidden />
+                Voltar para CLIENTES
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" aria-hidden />
+                Marcar como pago
+              </>
+            )}
+          </Button>
         </div>
-      ) : (
-        <div className="space-y-3 p-4">
-          {total > 1 ? (
-            <p className="px-1 text-xs text-muted-foreground">
-              Cada processo (número + tipo de ação) é um registro próprio dentro da mesma pasta do
-              cliente.
-            </p>
-          ) : null}
-          {perfil.registros.map((r) => {
+      ) : null}
+
+      {visiveis.length || valoresSemProcesso ? (
+        <div
+          role="tablist"
+          aria-label="Processos do cliente"
+          className="flex flex-wrap gap-2 border-b border-border px-5 py-4"
+        >
+          {visiveis.map((r) => {
             const d = dadosDoRegistro(r);
-            const qtdLinhas = linhas.get(r.id)?.length ?? 0;
-            const aberto = abertos.has(r.id);
-            const pagamentos = perfil.pagamentos.filter((p) => p.atendimento_id === r.id);
+            const ativo = r.id === selecionado;
             return (
-              <BlocoExpansivel
+              <button
                 key={r.id}
-                aninhado
-                aberto={aberto}
-                aoAlternar={(novo) => {
-                  setAbertos((atual) => {
-                    const n = new Set(atual);
-                    if (novo) n.add(r.id);
-                    else n.delete(r.id);
-                    return n;
-                  });
-                  if (novo) selecionar(r.id);
-                }}
+                type="button"
+                role="tab"
+                aria-selected={ativo}
+                onClick={() => selecionar(r.id)}
                 className={cn(
-                  r.id === selecionado && "border-primary shadow-[inset_3px_0_0_0_var(--primary)]",
+                  "flex min-w-48 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  ativo
+                    ? "border-primary bg-primary/10 shadow-[inset_3px_0_0_0_var(--primary)]"
+                    : "border-border hover:bg-muted/50",
                 )}
-                titulo={
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="tabular">{d.numero || "Sem número"}</span>
-                    <BadgeEscritorio escritorio={r.escritorio} />
-                    {r.revisao_motivo ? (
-                      <BadgeStatus texto="Revisar associação" tom="alerta" />
-                    ) : null}
-                    {qtdLinhas > 1 ? (
-                      <BadgeStatus texto={`${qtdLinhas} linhas`} tom="neutro" />
-                    ) : null}
-                    {pagamentos.length ? (
-                      <BadgeStatus
-                        texto={`${pagamentos.length} entrada(s) de valor`}
-                        tom="sucesso"
-                      />
-                    ) : null}
-                  </span>
-                }
-                resumo={
-                  <ResumoLinhas
-                    itens={organizarCampos(bloco.campos, (c) => d[c])
-                      .principais.filter((c) => c !== "numero")
-                      .map((c) => formatarValor(c, d[c]))}
-                  />
-                }
               >
-                {r.revisao_motivo ? (
-                  <div className="flex items-start gap-3 border-b border-border bg-warning-soft px-4 py-3 text-sm text-warning">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                    <p>
-                      {r.revisao_motivo}. Este registro não foi unido a nenhum outro automaticamente
-                      — complete o número e o tipo de ação ou revise a associação.
-                    </p>
-                  </div>
+                <span className={cn("tabular text-sm", ativo ? "font-bold" : "font-semibold")}>
+                  {d.numero || "Sem número"}
+                </span>
+                {d.tipo_acao ? (
+                  <span className="text-xs text-muted-foreground">{d.tipo_acao}</span>
                 ) : null}
-                <CamposDoBloco
-                  campos={bloco.campos}
-                  valor={(c) => d[c]}
-                  renderizar={(chave) => (
-                    <CampoEditavel
-                      key={`${r.id}-${chave}`}
-                      chave={chave}
-                      valor={d[chave]}
-                      salvar={salvarCampoRegistro(r, chave)}
-                    />
-                  )}
+                <BadgeStatus
+                  texto={r.pago ? "Pago" : "Em tramitação"}
+                  tom={r.pago ? "sucesso" : "neutro"}
                 />
-                <div className="space-y-4 border-t border-border p-4">
-                  <div className="flex justify-end">
-                    <DialogPagamento
-                      clienteFixo={perfil.cliente}
-                      registro={{ id: r.id, rotulo: rotuloRegistro(r) }}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <Plus className="size-4" aria-hidden />
-                          Registrar pagamento neste processo
-                        </Button>
-                      }
-                    />
-                  </div>
-                  {Object.keys(r.informacoes_adicionais ?? {}).length ? (
-                    <Secao
-                      titulo="Informações adicionais"
-                      descricao="Colunas extras da planilha, preservadas como recebidas."
-                    >
-                      {Object.entries(r.informacoes_adicionais).map(([k, v]) => (
-                        <CampoEditavel
-                          key={k}
-                          chave={k}
-                          rotulo={k}
-                          valor={v}
-                          salvar={(novo) =>
-                            editarCampo({ entidade: "adicional", id: r.id, campo: k, valor: novo })
-                          }
-                        />
-                      ))}
-                    </Secao>
-                  ) : null}
-                  {qtdLinhas ? (
-                    <LinhasDeOrigem linhas={linhas.get(r.id) ?? []} perfil={perfil} />
-                  ) : null}
-                </div>
-              </BlocoExpansivel>
+              </button>
             );
           })}
+          {valoresSemProcesso ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selecionado === SEM_PROCESSO}
+              onClick={() => selecionar(SEM_PROCESSO)}
+              className={cn(
+                "flex min-w-48 flex-col items-start gap-1 rounded-lg border border-dashed px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                selecionado === SEM_PROCESSO
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:bg-muted/50",
+              )}
+            >
+              <span className="text-sm font-semibold">Valores sem processo</span>
+              <span className="text-xs text-muted-foreground">
+                {valoresSemProcesso} valor(es) ainda não vinculado(s)
+              </span>
+            </button>
+          ) : null}
         </div>
-      )}
-    </BlocoExpansivel>
+      ) : null}
+
+      {registro ? (
+        <ProcessoSelecionado
+          key={registro.id}
+          perfil={perfil}
+          registro={registro}
+          linhas={linhas.get(registro.id) ?? []}
+        />
+      ) : selecionado === SEM_PROCESSO ? (
+        <p className="px-5 py-4 text-sm text-muted-foreground">
+          Valores recebidos que ainda não pertencem a nenhum processo. Eles não entram nos totais de
+          nenhum processo — vincule cada valor ao processo correto em “Valores recebidos”.
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Dados e situação de pagamento do processo selecionado (somente dele). */
+function ProcessoSelecionado({
+  perfil,
+  registro: r,
+  linhas,
+}: {
+  perfil: PerfilRF;
+  registro: RegistroRF;
+  linhas: PerfilRF["linhas"];
+}) {
+  const sincronizar = useSincronizar();
+  const bloco = blocoPerfil("processo");
+  const d = dadosDoRegistro(r);
+  const mutacao = useMutation({
+    mutationFn: (pago: boolean) => definirProcessoPago(r.id, pago),
+    onSuccess: async (_, pago) => {
+      await sincronizar(EVENTOS.CLIENTE_MARCADO_COMO_PAGO);
+      toast.success(
+        pago
+          ? `Processo ${d.numero || "sem número"} movido para JÁ PAGOS. Os demais processos não foram alterados.`
+          : `Processo ${d.numero || "sem número"} voltou para CLIENTES.`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div>
+      <div className="flex flex-col gap-3 border-b border-border bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Processo selecionado
+          </p>
+          <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+            <span className="tabular">{d.numero || "Sem número"}</span>
+            <BadgeEscritorio escritorio={r.escritorio} />
+            <BadgeStatus
+              texto={
+                r.pago
+                  ? `Pago${r.pago_em ? ` em ${formatDate(r.pago_em)}` : ""} · JÁ PAGOS`
+                  : "Em tramitação · CLIENTES"
+              }
+              tom={r.pago ? "sucesso" : "neutro"}
+            />
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <DialogPagamento
+            clienteFixo={perfil.cliente}
+            registro={{ id: r.id, rotulo: rotuloRegistro(r) }}
+            trigger={
+              <Button variant="outline" size="sm">
+                <Plus className="size-4" aria-hidden />
+                Registrar pagamento neste processo
+              </Button>
+            }
+          />
+          <Button
+            size="sm"
+            variant={r.pago ? "outline" : "default"}
+            className={cn(!r.pago && "bg-success text-white hover:bg-success/90")}
+            disabled={mutacao.isPending}
+            onClick={() => mutacao.mutate(!r.pago)}
+          >
+            {r.pago ? (
+              <>
+                <RotateCcw className="size-4" aria-hidden />
+                Voltar para CLIENTES
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" aria-hidden />
+                Marcar processo como pago
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+      {r.revisao_motivo ? (
+        <div className="flex items-start gap-3 border-b border-border bg-warning-soft px-5 py-3 text-sm text-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>
+            {r.revisao_motivo}. Este registro não foi unido a nenhum outro automaticamente —
+            complete o número e o tipo de ação ou revise a associação.
+          </p>
+        </div>
+      ) : null}
+      <CamposDoBloco
+        campos={bloco.campos}
+        valor={(c) => d[c]}
+        renderizar={(chave) => (
+          <CampoEditavel
+            key={`${r.id}-${chave}`}
+            chave={chave}
+            valor={d[chave]}
+            salvar={salvarCampoRegistro(r, chave)}
+          />
+        )}
+      />
+      {Object.keys(r.informacoes_adicionais ?? {}).length || linhas.length ? (
+        <div className="space-y-4 border-t border-border p-4">
+          {Object.keys(r.informacoes_adicionais ?? {}).length ? (
+            <Secao
+              titulo="Informações adicionais"
+              descricao="Colunas extras da planilha, preservadas como recebidas."
+            >
+              {Object.entries(r.informacoes_adicionais).map(([k, v]) => (
+                <CampoEditavel
+                  key={k}
+                  chave={k}
+                  rotulo={k}
+                  valor={v}
+                  salvar={(novo) =>
+                    editarCampo({ entidade: "adicional", id: r.id, campo: k, valor: novo })
+                  }
+                />
+              ))}
+            </Secao>
+          ) : null}
+          {linhas.length ? <LinhasDeOrigem linhas={linhas} perfil={perfil} /> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Informações internas (por processo: pasta, captação, contrato, indicação)
+// Informações internas (do processo selecionado: pasta, captação, contrato, indicação)
 // ---------------------------------------------------------------------------
 
-function BlocoInterno({ perfil }: { perfil: PerfilRF }) {
+function BlocoInterno({ registro: r }: { registro: RegistroRF }) {
   const bloco = blocoPerfil("interno");
-  const registros = perfil.registros;
-  const resumo =
-    registros.length === 0 ? (
-      <span>Sem processos registrados.</span>
-    ) : (
-      <ResumoLinhas
-        itens={[
-          ...registros.slice(0, 3).map((r) => {
-            const d = dadosDoRegistro(r);
-            return (
-              resumoDoBloco(bloco.campos, (c) => d[c]).join(" · ") ||
-              `${d.numero || "Sem número"}: sem informações internas`
-            );
-          }),
-          ...(registros.length > 3 ? [`+ ${registros.length - 3} processo(s)`] : []),
-        ]}
-      />
-    );
-
+  const d = dadosDoRegistro(r);
+  const resumo = (
+    <ResumoLinhas
+      itens={
+        resumoDoBloco(bloco.campos, (c) => d[c]).length
+          ? resumoDoBloco(bloco.campos, (c) => d[c])
+          : [`${d.numero || "Sem número"}: sem informações internas`]
+      }
+    />
+  );
   return (
-    <BlocoExpansivel titulo="Informações Internas" resumo={resumo}>
-      {registros.length === 0 ? (
-        <div className="px-5 py-6 text-sm text-muted-foreground">
-          As informações internas (pasta, captação, contrato e indicação) ficam vinculadas a cada
-          processo.
-        </div>
-      ) : (
-        <div className="divide-y divide-border">
-          {registros.map((r) => {
-            const d = dadosDoRegistro(r);
-            return (
-              <div key={r.id}>
-                {registros.length > 1 ? (
-                  <p className="bg-muted/30 px-5 py-2 text-xs font-semibold text-muted-foreground">
-                    {rotuloRegistro(r)}
-                  </p>
-                ) : null}
-                <CamposDoBloco
-                  campos={bloco.campos}
-                  valor={(c) => d[c]}
-                  renderizar={(chave) => (
-                    <CampoEditavel
-                      key={`${r.id}-${chave}`}
-                      chave={chave}
-                      valor={d[chave]}
-                      salvar={salvarCampoRegistro(r, chave)}
-                    />
-                  )}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <BlocoExpansivel titulo={`Informações Internas — ${d.numero || "Sem número"}`} resumo={resumo}>
+      <CamposDoBloco
+        campos={bloco.campos}
+        valor={(c) => d[c]}
+        renderizar={(chave) => (
+          <CampoEditavel
+            key={`${r.id}-${chave}`}
+            chave={chave}
+            valor={d[chave]}
+            salvar={salvarCampoRegistro(r, chave)}
+          />
+        )}
+      />
     </BlocoExpansivel>
   );
 }
@@ -808,8 +991,23 @@ function origemDoPagamento(p: Pagamento): string {
   return p.usuario_cadastro ? `Lançamento manual · ${p.usuario_cadastro}` : "Lançamento manual";
 }
 
-function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
-  const { pagamentos, registros } = perfil;
+/**
+ * Valores recebidos SOMENTE do processo selecionado (ou os valores ainda sem
+ * processo). Valores de processos diferentes nunca são somados juntos.
+ */
+function BlocoValoresRecebidos({
+  perfil,
+  pagamentos,
+  registro,
+  semProcesso,
+}: {
+  perfil: PerfilRF;
+  pagamentos: Pagamento[];
+  registro: RegistroRF | null;
+  semProcesso: boolean;
+}) {
+  const { registros } = perfil;
+  const numeroSel = registro ? dadosDoRegistro(registro).numero || "Sem número" : null;
   const resumo = resumirEntradas(pagamentos);
   const semCategoria = resumo.porClassificacao.sem_classificacao;
   const registroPorId = new Map(registros.map((r) => [r.id, r]));
@@ -837,8 +1035,14 @@ function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
 
   return (
     <BlocoExpansivel
-      titulo="Valores recebidos"
-      inicialAberto={semCategoria.quantidade > 0}
+      titulo={
+        numeroSel
+          ? `Valores recebidos — processo ${numeroSel}`
+          : semProcesso
+            ? "Valores recebidos — sem processo vinculado"
+            : "Valores recebidos"
+      }
+      inicialAberto={semCategoria.quantidade > 0 || semProcesso}
       resumo={<ResumoLinhas itens={linhasResumo} />}
     >
       <div className="space-y-4 p-4">
@@ -871,22 +1075,31 @@ function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
             Somente valores efetivamente recebidos, cada um com sua própria categoria. O “Valor
             Estimado do Processo” é uma estimativa e não entra aqui.
           </p>
-          <DialogPagamento
-            clienteFixo={perfil.cliente}
-            trigger={
-              <Button variant="outline" size="sm">
-                <Plus className="size-4" aria-hidden />
-                Lançar valor recebido
-              </Button>
-            }
-          />
+          {!semProcesso ? (
+            <DialogPagamento
+              clienteFixo={perfil.cliente}
+              registro={
+                registro ? { id: registro.id, rotulo: rotuloRegistro(registro) } : undefined
+              }
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Plus className="size-4" aria-hidden />
+                  {registro ? "Lançar valor recebido neste processo" : "Lançar valor recebido"}
+                </Button>
+              }
+            />
+          ) : null}
         </div>
         {pagamentos.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nenhum valor recebido registrado
-            {perfil.cliente.status === "pago"
-              ? " — o cliente está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido” para informar os valores."
-              : "."}
+            {registro
+              ? registro.pago
+                ? " para este processo — ele está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido neste processo” para informar os valores."
+                : " para este processo."
+              : perfil.cliente.status === "pago"
+                ? " — o cliente está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido” para informar os valores."
+                : "."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -916,7 +1129,13 @@ function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
                         <SeletorCategoria pagamento={p} />
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {reg ? rotuloRegistro(reg) : "—"}
+                        {semProcesso && registros.length ? (
+                          <VincularProcesso pagamento={p} registros={registros} />
+                        ) : reg ? (
+                          rotuloRegistro(reg)
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {origemDoPagamento(p)}
@@ -933,6 +1152,43 @@ function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
         )}
       </div>
     </BlocoExpansivel>
+  );
+}
+
+/** Vincula um valor sem processo a um processo do mesmo cliente. */
+function VincularProcesso({
+  pagamento,
+  registros,
+}: {
+  pagamento: Pagamento;
+  registros: RegistroRF[];
+}) {
+  const sincronizar = useSincronizar();
+  const mutation = useMutation({
+    mutationFn: (id: string) => vincularEntradaProcesso(pagamento.id, id),
+    onSuccess: async () => {
+      await sincronizar(EVENTOS.ENTRADA_CLASSIFICADA);
+      toast.success("Valor vinculado ao processo.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <Select value="" disabled={mutation.isPending} onValueChange={(v) => mutation.mutate(v)}>
+      <SelectTrigger
+        className="h-8 min-w-44 border-warning text-warning"
+        aria-label={`Vincular o valor de ${formatBRL(pagamento.valor)} a um processo`}
+      >
+        <SelectValue placeholder="Vincular a processo…" />
+      </SelectTrigger>
+      <SelectContent>
+        {registros.map((r) => (
+          <SelectItem key={r.id} value={r.id}>
+            {rotuloRegistro(r)}
+            {r.pago ? " (pago)" : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -1158,8 +1414,15 @@ function Revisoes({ perfil, revisoes }: { perfil: PerfilRF; revisoes: RevisaoRF[
 // Origem e histórico
 // ---------------------------------------------------------------------------
 
-function OrigemEHistorico({ perfil }: { perfil: PerfilRF }) {
-  const { cliente, linhas } = perfil;
+function OrigemEHistorico({ perfil, registro }: { perfil: PerfilRF; registro: RegistroRF | null }) {
+  const { cliente } = perfil;
+  // Com processo selecionado: só as linhas e o histórico DELE (+ alterações do cadastro do cliente).
+  const linhas = registro
+    ? perfil.linhas.filter((l) => l.atendimento_id === registro.id)
+    : perfil.linhas;
+  const historico = registro
+    ? perfil.historico.filter((h) => !h.atendimento_id || h.atendimento_id === registro.id)
+    : perfil.historico;
   const arquivos = [...new Set(linhas.map((l) => l.arquivo_nome).filter(Boolean))] as string[];
   const primeira = linhas[0];
   const imp = primeira?.importacao_id ? perfil.importacoes.get(primeira.importacao_id) : null;
@@ -1197,13 +1460,13 @@ function OrigemEHistorico({ perfil }: { perfil: PerfilRF }) {
         titulo="Histórico de complementações e alterações"
         acao={<History className="size-4 text-muted-foreground" aria-hidden />}
       >
-        {perfil.historico.length === 0 ? (
+        {historico.length === 0 ? (
           <div className="px-5 py-6 text-sm text-muted-foreground">
             Nenhum registro no histórico.
           </div>
         ) : (
           <ol className="max-h-[28rem] divide-y divide-border overflow-y-auto">
-            {perfil.historico.map((h) => (
+            {historico.map((h) => (
               <li
                 key={h.id}
                 className="flex flex-col gap-1 px-5 py-3 text-sm sm:flex-row sm:items-start sm:gap-3"

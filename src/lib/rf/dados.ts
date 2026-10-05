@@ -240,6 +240,9 @@ export interface RegistroRF {
   dados_rf: DadosRF;
   informacoes_adicionais: Record<string, string>;
   revisao_motivo: string | null;
+  /** Situação de pagamento DESTE processo (JÁ PAGOS quando true). */
+  pago: boolean;
+  pago_em: string | null;
   origens: { arquivo?: string; aba?: string; linha?: number }[] | unknown[];
   created_at: string;
   updated_at: string;

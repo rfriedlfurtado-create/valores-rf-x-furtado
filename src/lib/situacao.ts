@@ -57,8 +57,61 @@ export function situacaoDoCliente(cliente: ClienteMinimo): Situacao {
   return SITUACAO_POR_STATUS[cliente.status as StatusCliente] ?? "EM_TRAMITACAO";
 }
 
-export const estaEmTramitacao = (c: ClienteMinimo) => situacaoDoCliente(c) === "EM_TRAMITACAO";
-export const estaPago = (c: ClienteMinimo) => situacaoDoCliente(c) === "PAGO";
+// ---------------------------------------------------------------------------
+// Pagamento POR PROCESSO
+// ---------------------------------------------------------------------------
+//
+// Cada processo (atendimento) tem a sua situação (`atendimentos.pago`).
+// O cliente aparece:
+//   * em CLIENTES  se tiver ao menos um processo NÃO pago;
+//   * em JÁ PAGOS  se tiver ao menos um processo PAGO;
+// podendo estar nas duas visões ao mesmo tempo, sempre com o MESMO cadastro.
+// Cliente sem processo segue a situação do próprio cadastro (status).
+
+export interface ProcessoMinimo {
+  id: string;
+  pago: boolean;
+}
+
+interface ClienteComProcessos extends ClienteMinimo {
+  processos?: readonly ProcessoMinimo[];
+}
+
+/** Processos exibidos em cada visão. */
+export function processosDaVisao<P extends ProcessoMinimo>(
+  processos: readonly P[],
+  visao: "clientes" | "pagos",
+): P[] {
+  return processos.filter((p) => (visao === "pagos" ? p.pago : !p.pago));
+}
+
+export function estaEmTramitacao(c: ClienteComProcessos): boolean {
+  if (situacaoDoCliente(c) === "ARQUIVADO") return false;
+  if (c.processos?.length) return c.processos.some((p) => !p.pago);
+  return situacaoDoCliente(c) === "EM_TRAMITACAO";
+}
+
+export function estaPago(c: ClienteComProcessos): boolean {
+  if (situacaoDoCliente(c) === "ARQUIVADO") return false;
+  if (c.processos?.length) return c.processos.some((p) => p.pago);
+  return situacaoDoCliente(c) === "PAGO";
+}
+
+/**
+ * Entradas que pertencem à visão JÁ PAGOS: as dos processos pagos (cliente
+ * com processos) ou todas (cliente sem processo e pago). Valores de processos
+ * diferentes nunca se misturam.
+ */
+export function entradasDosPagos<E extends EntradaMinima>(
+  c: ClienteComProcessos,
+  entradas: readonly E[],
+): E[] {
+  if (c.processos?.length) {
+    const pagos = new Set(c.processos.filter((p) => p.pago).map((p) => p.id));
+    return entradas.filter((e) => e.atendimento_id && pagos.has(e.atendimento_id));
+  }
+  return situacaoDoCliente(c) === "PAGO" ? [...entradas] : [];
+}
 /** Cliente que participa de contagens e totais (não arquivado/excluído). */
 export const estaVigente = (c: ClienteMinimo) => situacaoDoCliente(c) !== "ARQUIVADO";
 
@@ -118,6 +171,8 @@ export function correspondeBusca(
 export interface EntradaMinima {
   valor: number;
   classificacao: ClassificacaoEntrada | null;
+  /** Processo ao qual o valor pertence (null = sem processo). */
+  atendimento_id?: string | null;
 }
 
 export type GrupoClassificacao = ClassificacaoEntrada | "sem_classificacao";
@@ -170,18 +225,23 @@ export function resumirEntradas(entradas: readonly EntradaMinima[]): ResumoEntra
 }
 
 export interface Indicadores {
-  /** Clientes vigentes (em tramitação + pagos). */
+  /** Clientes vigentes (cada cliente conta uma vez, mesmo com processos nas duas visões). */
   totalClientes: number;
+  /** Clientes com ao menos um processo em tramitação. */
   emTramitacao: number;
+  /** Clientes com ao menos um processo pago. */
   jaPagos: number;
+  /** Processos pagos / em tramitação (clientes sem processo contam como 1). */
+  processosPagos: number;
+  processosEmTramitacao: number;
   /** % de clientes vigentes que já pagaram (0–100). */
   percentualPagos: number;
   /** Soma dos valores efetivamente registrados (clientes vigentes). */
   valorRecebido: number;
   quantidadePagamentos: number;
-  /** Clientes PAGO sem nenhum valor registrado (Valor R$ é opcional). */
+  /** Clientes em JÁ PAGOS sem nenhum valor registrado nos processos pagos. */
   pagosSemValor: number;
-  /** Soma dos valores registrados para clientes PAGO. */
+  /** Soma dos valores registrados nos processos pagos. */
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
@@ -192,7 +252,7 @@ export interface Indicadores {
 }
 
 export function calcularIndicadores(
-  clientes: (ClienteMinimo & {
+  clientes: (ClienteComProcessos & {
     id: string;
     data_importacao: string | null;
   })[],
@@ -202,6 +262,9 @@ export function calcularIndicadores(
   const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
   let emTramitacao = 0;
   let jaPagos = 0;
+  let totalClientes = 0;
+  let processosPagos = 0;
+  let processosEmTramitacao = 0;
   let valorRecebido = 0;
   let quantidadePagamentos = 0;
   let pagosSemValor = 0;
@@ -219,23 +282,32 @@ export function calcularIndicadores(
     if (valores.length > 1) clientesComVariasEntradas += 1;
     valorRecebido += soma;
     quantidadePagamentos += valores.length;
-    if (situacao === "PAGO") {
+    totalClientes += 1;
+    if (estaPago(cliente)) {
       jaPagos += 1;
-      valorRecebidoDePagos += soma;
-      if (valores.length === 0) pagosSemValor += 1;
-    } else {
-      emTramitacao += 1;
+      const dosPagos = entradasDosPagos(cliente, valores);
+      valorRecebidoDePagos += dosPagos.reduce((s, e) => s + e.valor, 0);
+      if (dosPagos.length === 0) pagosSemValor += 1;
     }
+    if (estaEmTramitacao(cliente)) emTramitacao += 1;
+    if (cliente.processos?.length) {
+      for (const p of cliente.processos) {
+        if (p.pago) processosPagos += 1;
+        else processosEmTramitacao += 1;
+      }
+    } else if (situacao === "PAGO") processosPagos += 1;
+    else processosEmTramitacao += 1;
     if (cliente.data_importacao && new Date(cliente.data_importacao) >= inicioMes) {
       importadosNoMes += 1;
     }
   }
 
-  const totalClientes = emTramitacao + jaPagos;
   return {
     totalClientes,
     emTramitacao,
     jaPagos,
+    processosPagos,
+    processosEmTramitacao,
     percentualPagos: totalClientes ? (jaPagos / totalClientes) * 100 : 0,
     valorRecebido: arredondar(valorRecebido),
     quantidadePagamentos,

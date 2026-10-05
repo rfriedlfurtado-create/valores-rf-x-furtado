@@ -12,6 +12,7 @@ import {
   indexarClientes,
   montarItens,
   processoDaLinha,
+  processoDoItem,
   resumirPrevia,
   type ClienteBase,
   type Identificacao,
@@ -369,5 +370,32 @@ describe("linha sem valor (valores lançados depois, no perfil)", () => {
       totalNovo: 500,
       valores: 1,
     });
+  });
+});
+
+describe("processo da linha (pagamento por processo)", () => {
+  const processos = [
+    { id: "a", cliente_id: "joao", numero_digitos: "111", pasta: "P1" },
+    { id: "b", cliente_id: "joao", numero_digitos: "222", pasta: "P2" },
+    { id: "u", cliente_id: "maria", numero_digitos: null, pasta: null },
+  ];
+  const linha = (n: Partial<{ numero_digitos: string | null; pasta: string | null }> = {}) => ({
+    linha: 2,
+    numero_digitos: null,
+    pasta: null,
+    ...n,
+  });
+
+  test("único processo do cliente é usado automaticamente", () => {
+    expect(processoDoItem(linha(), "maria", processos)).toBe("u");
+  });
+  test("vários processos: só por número/pasta exatos ou escolha do usuário", () => {
+    expect(processoDoItem(linha(), "joao", processos)).toBeNull();
+    expect(processoDoItem(linha({ numero_digitos: "222" }), "joao", processos)).toBe("b");
+    expect(
+      processoDoItem(linha({ numero_digitos: "222" }), "joao", processos, new Map([[2, "a"]])),
+    ).toBe("a");
+    // escolha de processo de outro cliente é ignorada
+    expect(processoDoItem(linha(), "joao", processos, new Map([[2, "u"]]))).toBeNull();
   });
 });

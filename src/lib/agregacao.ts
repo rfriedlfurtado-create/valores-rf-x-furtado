@@ -4,8 +4,14 @@
  * e dos indicadores.
  */
 
-import { calcularIndicadores, estaEmTramitacao, estaPago, type Indicadores } from "./situacao";
-import type { Cliente, ClienteComTotais, Pagamento } from "./tipos";
+import {
+  calcularIndicadores,
+  entradasDosPagos,
+  estaEmTramitacao,
+  estaPago,
+  type Indicadores,
+} from "./situacao";
+import type { Cliente, ClienteComTotais, Pagamento, ProcessoResumo } from "./tipos";
 
 function numero(valor: unknown): number {
   const n = typeof valor === "string" ? Number(valor) : (valor as number);
@@ -17,9 +23,9 @@ export interface BaseAgregada {
   clientes: ClienteComTotais[];
   porId: Map<string, ClienteComTotais>;
   pagamentosPorCliente: Map<string, Pagamento[]>;
-  /** Visão CLIENTES: situação EM_TRAMITACAO. */
+  /** Visão CLIENTES: clientes com ao menos um processo em tramitação. */
   emTramitacao: ClienteComTotais[];
-  /** Visão JÁ PAGOS: situação PAGO. */
+  /** Visão JÁ PAGOS: clientes com ao menos um processo pago (o mesmo cadastro pode estar nas duas). */
   jaPagos: ClienteComTotais[];
   /** Indicadores do sistema (Dashboard, cabeçalhos, históricos). */
   indicadores: Indicadores;
@@ -37,6 +43,7 @@ export function agregarBase(
   clientesBrutos: Cliente[],
   pagamentosBrutos: Pagamento[],
   agora: Date = new Date(),
+  processosBrutos: ProcessoResumo[] = [],
 ): BaseAgregada {
   // Excluídos/arquivados nunca entram em nenhuma visão ou métrica.
   const clientes = clientesBrutos.filter((c) => !c.deleted_at);
@@ -64,11 +71,31 @@ export function agregarBase(
     );
   }
 
+  const processosPorCliente = new Map<string, ProcessoResumo[]>();
+  for (const p of processosBrutos) {
+    if (!idsVigentes.has(p.cliente_id)) continue;
+    processosPorCliente.set(p.cliente_id, [...(processosPorCliente.get(p.cliente_id) ?? []), p]);
+  }
+
   const comTotais: ClienteComTotais[] = clientes.map((cliente) => {
     const lista = pagamentosPorCliente.get(cliente.id) ?? [];
     const datas = lista.map((p) => p.data_pagamento).sort();
+    const processos = processosPorCliente.get(cliente.id) ?? [];
+    const dosPagos = entradasDosPagos({ ...cliente, processos }, lista);
+    const pagosEm = processos
+      .filter((p) => p.pago)
+      .map((p) => p.pago_em ?? cliente.updated_at)
+      .sort();
     return {
       ...cliente,
+      processos,
+      totalRecebidoPagos: dosPagos.reduce((soma, p) => soma + p.valor, 0),
+      quantidadePagamentosPagos: dosPagos.length,
+      pagoEm: pagosEm.length
+        ? pagosEm[pagosEm.length - 1]!
+        : processos.length === 0 && cliente.status === "pago"
+          ? cliente.updated_at
+          : null,
       totalRecebido: lista.reduce((soma, p) => soma + p.valor, 0),
       quantidadePagamentos: lista.length,
       ultimoPagamento: datas.length ? datas[datas.length - 1]! : null,

@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { LIMIARES_PADRAO, type LimiaresSimilaridade } from "./similarity";
 import { agregarBase, type BaseAgregada } from "./agregacao";
 import { CHAVES_FURTADO } from "./furtado/consultas";
+import { db } from "./furtado/persistencia";
 import { CHAVES_RF } from "./rf/dados";
 import type {
   Cliente,
@@ -20,6 +21,7 @@ import type {
   CorrespondenciaDetalhada,
   Importacao,
   Pagamento,
+  ProcessoResumo,
   VariacaoNome,
 } from "./tipos";
 
@@ -35,15 +37,62 @@ function numero(valor: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Lê todas as páginas de uma consulta (o PostgREST devolve no máximo 1000 linhas por vez). */
+async function todasAsLinhas<T>(
+  consulta: (
+    de: number,
+    ate: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await consulta(de, de + 999);
+    if (error) throw new Error(error.message);
+    const lote = (data ?? []) as T[];
+    out.push(...lote);
+    if (lote.length < 1000) return out;
+  }
+}
+
+interface AtendimentoBruto {
+  id: string;
+  cliente_id: string;
+  numero_processo: string | null;
+  servico: string | null;
+  pago: boolean | null;
+  pago_em: string | null;
+  dados_rf: { numero?: string; tipo_acao?: string } | null;
+}
+
 async function carregarBase(): Promise<BaseAgregada> {
-  const [clientesRes, pagamentosRes] = await Promise.all([
+  const [clientesRes, pagamentosRes, atendimentos] = await Promise.all([
     supabase.from("clientes").select("*").is("deleted_at", null).order("nome", { ascending: true }),
     supabase.from("pagamentos").select("*").order("data_pagamento", { ascending: false }),
+    todasAsLinhas<AtendimentoBruto>((de, ate) =>
+      db
+        .from("atendimentos")
+        .select("id,cliente_id,numero_processo,servico,pago,pago_em,dados_rf")
+        .is("deleted_at", null)
+        .order("created_at")
+        .order("id")
+        .range(de, ate),
+    ),
   ]);
+
+  const processos: ProcessoResumo[] = atendimentos.map((a) => ({
+    id: a.id,
+    cliente_id: a.cliente_id,
+    numero: a.dados_rf?.numero || a.numero_processo || null,
+    tipo_acao: a.dados_rf?.tipo_acao || a.servico || null,
+    pago: Boolean(a.pago),
+    pago_em: a.pago_em,
+  }));
 
   return agregarBase(
     assertOk(clientesRes) as unknown as Cliente[],
     assertOk(pagamentosRes) as unknown as Pagamento[],
+    new Date(),
+    processos,
   );
 }
 

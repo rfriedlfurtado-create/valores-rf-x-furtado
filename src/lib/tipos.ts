@@ -120,7 +120,28 @@ export interface Correspondencia {
 }
 
 /** Cliente com os totais financeiros já agregados. */
+/**
+ * Processo (atendimento) do cliente com a sua PRÓPRIA situação de pagamento.
+ * O pagamento é marcado por processo: um cliente pode ter processos pagos
+ * (JÁ PAGOS) e não pagos (CLIENTES) ao mesmo tempo, num único cadastro.
+ */
+export interface ProcessoResumo {
+  id: string;
+  cliente_id: string;
+  numero: string | null;
+  tipo_acao: string | null;
+  pago: boolean;
+  pago_em: string | null;
+}
+
 export interface ClienteComTotais extends Cliente {
+  /** Processos vigentes do cliente (vazio = cliente sem processo). */
+  processos: ProcessoResumo[];
+  /** Soma dos valores dos processos PAGOS (ou de tudo, se o cliente não tem processo e está pago). */
+  totalRecebidoPagos: number;
+  quantidadePagamentosPagos: number;
+  /** Data mais recente em que um processo foi marcado como pago. */
+  pagoEm: string | null;
   totalRecebido: number;
   quantidadePagamentos: number;
   ultimoPagamento: string | null;

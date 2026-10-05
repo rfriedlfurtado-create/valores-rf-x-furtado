@@ -185,6 +185,32 @@ export interface ProcessoBase {
   cliente_id: string;
   numero_digitos: string | null;
   pasta: string | null;
+  /** Número como exibido (para escolher o processo na prévia). */
+  numero?: string | null;
+  tipo_acao?: string | null;
+  /** Situação de pagamento do processo. */
+  pago?: boolean;
+}
+
+/**
+ * Processo que recebe a linha (pagamento é marcado POR PROCESSO):
+ *  1. escolha do usuário na prévia (sempre prevalece);
+ *  2. Pasta ou Número exatos da planilha;
+ *  3. o único processo do cliente.
+ * Cliente com vários processos e nenhum identificado → null (o usuário escolhe).
+ */
+export function processoDoItem(
+  linha: Pick<LinhaRecebimento, "numero_digitos" | "pasta" | "linha">,
+  clienteId: string,
+  processos: readonly ProcessoBase[],
+  escolhidos: Map<number, string> = new Map(),
+): string | null {
+  const doCliente = processos.filter((p) => p.cliente_id === clienteId);
+  const escolhido = escolhidos.get(linha.linha);
+  if (escolhido && doCliente.some((p) => p.id === escolhido)) return escolhido;
+  const exato = processoDaLinha(linha, clienteId, processos);
+  if (exato) return exato;
+  return doCliente.length === 1 ? doCliente[0]!.id : null;
 }
 
 /** Processo do cliente com o mesmo número ou a mesma pasta (nunca por suposição). */
@@ -242,13 +268,14 @@ export function montarItens(
   processos: readonly ProcessoBase[],
   classificacoes: Map<string, ClassificacaoEntrada | null> = new Map(),
   arquivo = "",
+  escolhidos: Map<number, string> = new Map(),
 ): ItemRecebimento[] {
   const ocorrencias = new Map<string, number>();
   const itens: ItemRecebimento[] = [];
   for (const l of linhas) {
     const ident = identificacoes.get(l.linha);
     if (!ident || ident.status !== "encontrado" || !ident.cliente_id) continue;
-    const atendimento = processoDaLinha(l, ident.cliente_id, processos);
+    const atendimento = processoDoItem(l, ident.cliente_id, processos, escolhidos);
     if (l.entradas.length === 0) {
       itens.push({
         linha: l.linha,
@@ -314,6 +341,7 @@ export interface ResumoPrevia {
   linhas: number;
   valores: number;
   clientesIdentificados: number;
+  /** Processos (ou clientes sem processo) que vão para JÁ PAGOS. */
   clientesMovidos: number;
   clientesJaPagos: number;
   /** Linhas sem valor com cliente identificado (valor a lançar no perfil). */
@@ -358,7 +386,8 @@ export function resumirPrevia(params: {
       if (!i.classificacao) semCat += 1;
     } else if (r?.resultado === "ja_registrado") jaReg += 1;
     else if (r?.resultado === "possivel_duplicado") dup += 1;
-    if (r?.movido) movidos.add(i.cliente_id);
+    // Pagamento por processo: conta cada PROCESSO movido (cliente sem processo = 1).
+    if (r?.movido) movidos.add(`${i.cliente_id}|${i.atendimento_id ?? ""}`);
   }
   for (const id of clientes) if (params.statusCliente(id) === "pago") jaPagos.add(id);
   let revisao = 0;
