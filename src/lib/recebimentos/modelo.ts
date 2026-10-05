@@ -7,10 +7,14 @@
  * Reclamante (ou CPF, quando houver) e registra os valores recebidos.
  *
  * Colunas reconhecidas pelo cabeçalho (sem depender da posição):
- *   Reclamante (obrigatória) · CPF · Valor · Categoria/Tipo · Data ·
+ *   Reclamante (ÚNICA obrigatória) · CPF · Valor · Categoria/Tipo · Data ·
  *   Número do processo · Pasta · Observação
  * e também colunas por categoria — "Contratual", "Atrasados",
  * "Sucumbência" — em que cada célula com valor vira um recebimento próprio.
+ *
+ * Valor é OPCIONAL: linha só com o Reclamante identifica o cliente e o move
+ * para JÁ PAGOS sem lançar valor; os valores podem ser lançados depois,
+ * manualmente, no perfil do cliente.
  */
 
 import * as XLSX from "xlsx";
@@ -195,6 +199,7 @@ export interface LinhaRecebimento {
   /** AAAA-MM-DD ou null. */
   data: string | null;
   observacao: string | null;
+  /** Valores da linha (vazio = cliente recebeu, valor a lançar no perfil). */
   entradas: EntradaLida[];
   /** Conteúdo original da linha (cabeçalho → texto), guardado com cada recebimento. */
   original: Record<string, string>;
@@ -214,7 +219,7 @@ export interface PlanilhaRecebimentos {
   /** Colunas não reconhecidas (guardadas no conteúdo original). */
   extras: Map<number, string>;
   linhas: LinhaRecebimento[];
-  /** Linhas sem Reclamante ou sem nenhum valor recebido válido. */
+  /** Linhas sem Reclamante. */
   pendentes: LinhaPendenteRecebimento[];
 }
 
@@ -286,16 +291,8 @@ export function lerPlanilhaRecebimentos(dados: ArrayBuffer | Uint8Array): Planil
           usados.add(campo);
         } else extras.set(c, cab);
       }
+      // Só o Reclamante é obrigatório; colunas de valor são opcionais.
       if (!usados.has("reclamante")) continue;
-      const temValor =
-        usados.has("valor") ||
-        usados.has("valor_contratuais") ||
-        usados.has("valor_atrasados") ||
-        usados.has("valor_sucumbencia");
-      if (!temValor)
-        throw new ErroPlanilhaRecebimentos(
-          'A planilha tem a coluna "Reclamante", mas nenhuma coluna de valor ("Valor", "Valor recebido", "Contratual", "Atrasados" ou "Sucumbência").',
-        );
 
       const linhas: LinhaRecebimento[] = [];
       const pendentes: LinhaPendenteRecebimento[] = [];
@@ -318,7 +315,7 @@ export function lerPlanilhaRecebimentos(dados: ArrayBuffer | Uint8Array): Planil
   }
 
   throw new ErroPlanilhaRecebimentos(
-    'Nenhuma aba tem a coluna "Reclamante". A planilha de valores recebidos deve ter os cabeçalhos "Reclamante" e "Valor" (ou colunas "Contratual", "Atrasados", "Sucumbência").',
+    'Nenhuma aba tem a coluna "Reclamante". A planilha de clientes com valores recebidos deve ter ao menos o cabeçalho "Reclamante" (as demais colunas são opcionais).',
   );
 }
 
@@ -394,14 +391,8 @@ function interpretarLinha(
     });
     return [];
   }
-  if (entradas.length === 0) {
-    pendentes.push({
-      linha,
-      motivo: avisos.length ? avisos.join(" ") : "Nenhum valor recebido informado.",
-      resumo,
-    });
-    return [];
-  }
+  // Sem valor: a linha continua válida (cliente vai para JÁ PAGOS; valores
+  // são lançados depois, manualmente, no perfil).
 
   return [
     {

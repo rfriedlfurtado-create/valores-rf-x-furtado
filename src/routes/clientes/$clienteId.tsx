@@ -866,12 +866,28 @@ function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
             </div>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Somente valores efetivamente recebidos, cada um com sua própria categoria. O “Valor
-          Estimado do Processo” é uma estimativa e não entra aqui.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Somente valores efetivamente recebidos, cada um com sua própria categoria. O “Valor
+            Estimado do Processo” é uma estimativa e não entra aqui.
+          </p>
+          <DialogPagamento
+            clienteFixo={perfil.cliente}
+            trigger={
+              <Button variant="outline" size="sm">
+                <Plus className="size-4" aria-hidden />
+                Lançar valor recebido
+              </Button>
+            }
+          />
+        </div>
         {pagamentos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum valor recebido registrado.</p>
+          <p className="text-sm text-muted-foreground">
+            Nenhum valor recebido registrado
+            {perfil.cliente.status === "pago"
+              ? " — o cliente está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido” para informar os valores."
+              : "."}
+          </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <Table>

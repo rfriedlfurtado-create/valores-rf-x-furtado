@@ -207,13 +207,19 @@ export function processoDaLinha(
   return null;
 }
 
-/** Item enviado à função `aplicar_importacao_recebimentos` (um por recebimento). */
+/**
+ * Item enviado à função `aplicar_importacao_recebimentos`: um por
+ * recebimento, ou um item `sem_valor` para a linha sem valor (o cliente só é
+ * movido para JÁ PAGOS; os valores são lançados depois, no perfil).
+ */
 export interface ItemRecebimento {
   linha: number;
   /** Posição do valor dentro da linha (0, 1, 2…). */
   indice: number;
   cliente_id: string;
-  valor: number;
+  /** null quando `sem_valor`. */
+  valor: number | null;
+  sem_valor: boolean;
   data: string | null;
   classificacao: ClassificacaoEntrada | null;
   atendimento_id: string | null;
@@ -243,6 +249,22 @@ export function montarItens(
     const ident = identificacoes.get(l.linha);
     if (!ident || ident.status !== "encontrado" || !ident.cliente_id) continue;
     const atendimento = processoDaLinha(l, ident.cliente_id, processos);
+    if (l.entradas.length === 0) {
+      itens.push({
+        linha: l.linha,
+        indice: 0,
+        cliente_id: ident.cliente_id,
+        valor: null,
+        sem_valor: true,
+        data: l.data,
+        classificacao: null,
+        atendimento_id: atendimento,
+        chave: `rv:sv:${l.linha}`,
+        observacao: l.observacao,
+        dados_origem: { arquivo, linha: l.linha, identificacao: ident.via, valores: l.original },
+      });
+      continue;
+    }
     l.entradas.forEach((e, indice) => {
       const centavos = Math.round(e.valor * 100);
       const base = `${ident.cliente_id}|${l.data ?? "sd"}|${centavos}`;
@@ -254,6 +276,7 @@ export function montarItens(
         indice,
         cliente_id: ident.cliente_id!,
         valor: e.valor,
+        sem_valor: false,
         data: l.data,
         classificacao: classificacoes.has(k) ? (classificacoes.get(k) ?? null) : e.classificacao,
         atendimento_id: atendimento,
@@ -293,6 +316,8 @@ export interface ResumoPrevia {
   clientesIdentificados: number;
   clientesMovidos: number;
   clientesJaPagos: number;
+  /** Linhas sem valor com cliente identificado (valor a lançar no perfil). */
+  clientesSemValor: number;
   valoresNovos: number;
   valoresJaRegistrados: number;
   possiveisDuplicados: number;
@@ -317,6 +342,7 @@ export function resumirPrevia(params: {
   const clientes = new Set<string>();
   const movidos = new Set<string>();
   const jaPagos = new Set<string>();
+  const semValor = new Set<number>();
   let novos = 0,
     jaReg = 0,
     dup = 0,
@@ -325,9 +351,10 @@ export function resumirPrevia(params: {
   for (const i of itens) {
     clientes.add(i.cliente_id);
     const r = porChave.get(chaveItem(i));
-    if (r?.resultado === "inserido") {
+    if (i.sem_valor) semValor.add(i.linha);
+    else if (r?.resultado === "inserido") {
       novos += 1;
-      total = Math.round((total + i.valor) * 100) / 100;
+      total = Math.round((total + (i.valor ?? 0)) * 100) / 100;
       if (!i.classificacao) semCat += 1;
     } else if (r?.resultado === "ja_registrado") jaReg += 1;
     else if (r?.resultado === "possivel_duplicado") dup += 1;
@@ -342,6 +369,7 @@ export function resumirPrevia(params: {
     clientesIdentificados: clientes.size,
     clientesMovidos: movidos.size,
     clientesJaPagos: jaPagos.size,
+    clientesSemValor: semValor.size,
     valoresNovos: novos,
     valoresJaRegistrados: jaReg,
     possiveisDuplicados: dup,

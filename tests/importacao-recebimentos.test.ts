@@ -96,16 +96,20 @@ describe("leitura da planilha de valores recebidos", () => {
         ["", 300, "", null],
       ]),
     );
-    expect(p.linhas.map((l) => l.entradas[0]!.valor)).toEqual([1000, 4500, 800]);
-    expect(p.linhas.map((l) => l.entradas[0]!.classificacao)).toEqual([
+    const comValor = p.linhas.filter((l) => l.entradas.length);
+    expect(comValor.map((l) => l.entradas[0]!.valor)).toEqual([1000, 4500, 800]);
+    expect(comValor.map((l) => l.entradas[0]!.classificacao)).toEqual([
       "contratuais",
       "atrasados",
       "sucumbencia",
     ]);
-    expect(p.linhas.map((l) => l.data)).toEqual(["2025-01-10", "2025-01-11", null]);
-    expect(new Set(p.linhas.map((l) => l.nome_normalizado)).size).toBe(1);
-    // valor 0 e linha sem Reclamante ficam fora, com motivo
-    expect(p.pendentes.map((x) => x.linha)).toEqual([5, 6]);
+    expect(comValor.map((l) => l.data)).toEqual(["2025-01-10", "2025-01-11", null]);
+    expect(new Set(comValor.map((l) => l.nome_normalizado)).size).toBe(1);
+    // valor 0: linha continua válida, sem valor (aviso); sem Reclamante fica fora
+    const fulano = p.linhas.find((l) => l.reclamante === "Fulano")!;
+    expect(fulano.entradas).toEqual([]);
+    expect(fulano.avisos.length).toBe(1);
+    expect(p.pendentes.map((x) => x.linha)).toEqual([6]);
   });
 
   test("colunas por categoria: cada célula com valor é um recebimento próprio", () => {
@@ -135,15 +139,25 @@ describe("leitura da planilha de valores recebidos", () => {
     expect(p.linhas[0]!.avisos.length).toBe(1);
   });
 
-  test("planilha do modelo de cadastro (sem coluna de valor) é recusada", () => {
+  test("só o Reclamante é obrigatório: planilha sem coluna de valor é aceita", () => {
+    const p = lerPlanilhaRecebimentos(
+      planilha([["Reclamante", "Valor Estimado do Processo"], ["Ana", 50000], ["Bia"]]),
+    );
+    expect(p.linhas.map((l) => l.reclamante)).toEqual(["Ana", "Bia"]);
+    // "Valor Estimado do Processo" nunca é lido como valor recebido
+    expect(p.linhas.every((l) => l.entradas.length === 0)).toBe(true);
+    expect(p.pendentes).toEqual([]);
+  });
+
+  test("sem a coluna Reclamante a planilha é recusada", () => {
     expect(() =>
       lerPlanilhaRecebimentos(
         planilha([
-          ["Número", "Reclamante", "Valor Estimado do Processo"],
-          ["1", "Ana", 50000],
+          ["Nada", "Valor"],
+          ["x", 10],
         ]),
       ),
-    ).toThrow(/nenhuma coluna de valor/);
+    ).toThrow(/Reclamante/);
   });
 
   test("modelo vazio para download tem Reclamante e Valor", async () => {
@@ -306,6 +320,54 @@ describe("recebimentos e idempotência", () => {
       valoresJaRegistrados: 1,
       totalNovo: 6300,
       revisao: 1,
+    });
+  });
+});
+
+describe("linha sem valor (valores lançados depois, no perfil)", () => {
+  const indice = indexarClientes(CLIENTES);
+  const p = lerPlanilhaRecebimentos(
+    planilha([
+      ["Reclamante", "Valor"],
+      ["João da Silva", null],
+      ["João da Silva", 500],
+    ]),
+  );
+  const idents = new Map<number, Identificacao>(
+    p.linhas.map((l) => [l.linha, identificarLinha(l, indice)]),
+  );
+
+  test("gera item sem_valor (sem pagamento) e o valor normal", () => {
+    const itens = montarItens(p.linhas, idents, []);
+    expect(itens.map((i) => [i.sem_valor, i.valor, i.chave])).toEqual([
+      [true, null, "rv:sv:2"],
+      [false, 500, "rv:sd:50000:1"],
+    ]);
+  });
+
+  test("resumo conta a linha sem valor e não soma no total", () => {
+    const itens = montarItens(p.linhas, idents, []);
+    const resultados = itens.map((i) => ({
+      linha: i.linha,
+      cliente_id: i.cliente_id,
+      chave: i.chave,
+      resultado: i.sem_valor ? "marcado_pago" : "inserido",
+      movido: i.sem_valor,
+    }));
+    const r = resumirPrevia({
+      linhas: p.linhas,
+      pendentes: 0,
+      identificacoes: idents,
+      itens,
+      resultados,
+      statusCliente: () => "em_tramitacao",
+    });
+    expect(r).toMatchObject({
+      clientesSemValor: 1,
+      clientesMovidos: 1,
+      valoresNovos: 1,
+      totalNovo: 500,
+      valores: 1,
     });
   });
 });

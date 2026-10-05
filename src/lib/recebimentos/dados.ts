@@ -74,7 +74,13 @@ export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
 }
 
 export type ResultadoRecebimento =
-  "inserido" | "ja_registrado" | "possivel_duplicado" | "cliente_indisponivel" | "valor_invalido";
+  | "inserido"
+  | "ja_registrado"
+  | "possivel_duplicado"
+  | "cliente_indisponivel"
+  | "valor_invalido"
+  | "marcado_pago"
+  | "ja_pago";
 
 export interface LinhaResultado {
   linha: number;
@@ -91,6 +97,8 @@ export const ROTULO_RESULTADO: Record<ResultadoRecebimento, string> = {
   possivel_duplicado: "Valor igual já lançado manualmente",
   cliente_indisponivel: "Cliente indisponível",
   valor_invalido: "Valor inválido",
+  marcado_pago: "Sem valor — lançar no perfil",
+  ja_pago: "Sem valor — já estava em JÁ PAGOS",
 };
 
 /** Itens por chamada (cada chamada é uma transação). */

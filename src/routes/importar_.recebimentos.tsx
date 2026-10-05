@@ -105,6 +105,8 @@ const TOM_RESULTADO: Record<ResultadoRecebimento, "sucesso" | "neutro" | "alerta
   possivel_duplicado: "alerta",
   cliente_indisponivel: "perigo",
   valor_invalido: "perigo",
+  marcado_pago: "alerta",
+  ja_pago: "neutro",
 };
 
 function ImportarRecebimentos() {
@@ -363,12 +365,17 @@ function ImportarRecebimentos() {
             <p className="font-semibold">Como funciona</p>
             <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground">
               <li>
-                <strong className="text-foreground">Obrigatórias:</strong> Reclamante e uma coluna
-                de valor (“Valor” ou colunas “Contratual”, “Atrasados”, “Sucumbência”).
+                <strong className="text-foreground">Obrigatória:</strong> somente a coluna
+                Reclamante.
               </li>
               <li>
-                <strong className="text-foreground">Opcionais:</strong> CPF, Categoria, Data, Número
-                do processo, Pasta, Observação.
+                <strong className="text-foreground">Opcionais:</strong> Valor (ou colunas
+                “Contratual”, “Atrasados”, “Sucumbência”), CPF, Categoria, Data, Número do processo,
+                Pasta, Observação.
+              </li>
+              <li>
+                Linha sem valor: o cliente vai para JÁ PAGOS e os valores recebidos podem ser
+                lançados depois, manualmente, no perfil do cliente.
               </li>
               <li>
                 O cliente é localizado na base pelo CPF ou pelo nome idêntico. Nenhum cliente novo é
@@ -423,7 +430,7 @@ function ImportarRecebimentos() {
               <Button
                 className="bg-success text-white hover:bg-success/90"
                 onClick={() => void confirmar()}
-                disabled={resumo.valoresNovos === 0}
+                disabled={resumo.valoresNovos === 0 && resumo.clientesMovidos === 0}
               >
                 <CheckCircle2 className="size-4" aria-hidden />
                 Confirmar importação
@@ -458,6 +465,13 @@ function ImportarRecebimentos() {
               }
             />
             <StatCard
+              titulo="Sem valor informado"
+              valor={resumo.clientesSemValor}
+              icone={Wallet}
+              tom={resumo.clientesSemValor ? "warning" : "neutro"}
+              descricao="Vão para JÁ PAGOS — lance os valores depois, no perfil"
+            />
+            <StatCard
               titulo="Para revisão"
               valor={resumo.revisao}
               icone={AlertTriangle}
@@ -476,13 +490,13 @@ function ImportarRecebimentos() {
               valor={resumo.pendentes}
               icone={FileWarning}
               tom={resumo.pendentes ? "danger" : "neutro"}
-              descricao="Sem Reclamante ou sem valor"
+              descricao="Sem Reclamante"
             />
           </div>
 
           <Tabs defaultValue={revisao.length ? "revisao" : "valores"}>
             <TabsList className="flex-wrap">
-              <TabsTrigger value="valores">Valores a registrar ({itens.length})</TabsTrigger>
+              <TabsTrigger value="valores">Clientes e valores ({itens.length})</TabsTrigger>
               <TabsTrigger value="revisao">Revisão ({revisao.length})</TabsTrigger>
               <TabsTrigger value="ignoradas">Ignoradas ({planilha.pendentes.length})</TabsTrigger>
             </TabsList>
@@ -510,9 +524,8 @@ function ImportarRecebimentos() {
               ) : (
                 <Card className="gap-0 p-0">
                   <p className="border-b border-border px-5 py-3 text-xs text-muted-foreground">
-                    Estes valores <strong>não</strong> serão gravados até o cliente ser vinculado.
-                    Nenhum cliente é criado automaticamente e nenhum vínculo é feito por semelhança
-                    de nome.
+                    Nada é gravado para estas linhas até o cliente ser vinculado. Nenhum cliente é
+                    criado automaticamente e nenhum vínculo é feito por semelhança de nome.
                   </p>
                   <ul className="divide-y divide-border">
                     {revisao.map(({ l, ident }) => (
@@ -521,7 +534,11 @@ function ImportarRecebimentos() {
                         linha={l.linha}
                         reclamante={l.reclamante}
                         cpf={l.cpf}
-                        valores={l.entradas.map((e) => formatBRL(e.valor)).join(" + ")}
+                        valores={
+                          l.entradas.length
+                            ? l.entradas.map((e) => formatBRL(e.valor)).join(" + ")
+                            : "Sem valor informado"
+                        }
                         ident={ident}
                         candidatos={[
                           ...new Set([
@@ -579,7 +596,11 @@ function ImportarRecebimentos() {
               <p className="text-sm text-muted-foreground">
                 {relatorio.valoresNovos} valor(es) registrado(s) · total{" "}
                 {formatBRL(relatorio.totalNovo)} · {relatorio.clientesMovidos} cliente(s) movido(s)
-                para JÁ PAGOS · {relatorio.valoresJaRegistrados} já registrado(s).
+                para JÁ PAGOS · {relatorio.valoresJaRegistrados} já registrado(s)
+                {relatorio.clientesSemValor
+                  ? ` · ${relatorio.clientesSemValor} linha(s) sem valor — lance os valores no perfil do cliente`
+                  : ""}
+                .
               </p>
             </div>
           </div>
@@ -633,7 +654,7 @@ function TabelaValores({
   if (itens.length === 0)
     return (
       <Card className="p-6 text-sm text-muted-foreground">
-        Nenhum valor com cliente identificado.
+        Nenhuma linha com cliente identificado.
       </Card>
     );
   return (
@@ -670,37 +691,47 @@ function TabelaValores({
                   ) : null}
                 </TableCell>
                 <TableCell className="text-right tabular font-semibold">
-                  {formatBRL(i.valor)}
+                  {i.sem_valor ? (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Sem valor (lançar no perfil)
+                    </span>
+                  ) : (
+                    formatBRL(i.valor ?? 0)
+                  )}
                 </TableCell>
                 <TableCell className="tabular text-sm">
                   {i.data ? formatDate(i.data) : <span className="text-muted-foreground">—</span>}
                 </TableCell>
                 <TableCell>
-                  <Select
-                    value={i.classificacao ?? "nenhuma"}
-                    onValueChange={(v) =>
-                      classificar(
-                        i.linha,
-                        i.indice,
-                        v === "nenhuma" ? null : (v as ClassificacaoEntrada),
-                      )
-                    }
-                  >
-                    <SelectTrigger
-                      className="h-8"
-                      aria-label={`Categoria do valor da linha ${i.linha}`}
+                  {i.sem_valor ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <Select
+                      value={i.classificacao ?? "nenhuma"}
+                      onValueChange={(v) =>
+                        classificar(
+                          i.linha,
+                          i.indice,
+                          v === "nenhuma" ? null : (v as ClassificacaoEntrada),
+                        )
+                      }
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nenhuma">Sem categoria</SelectItem>
-                      {CLASSIFICACOES_ENTRADA.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label.toUpperCase()}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <SelectTrigger
+                        className="h-8"
+                        aria-label={`Categoria do valor da linha ${i.linha}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nenhuma">Sem categoria</SelectItem>
+                        {CLASSIFICACOES_ENTRADA.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label.toUpperCase()}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {i.atendimento_id ? "Vinculado" : "—"}
