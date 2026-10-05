@@ -424,7 +424,7 @@ export function campo(chave: ChaveCampo): CampoModelo {
 /** Blocos do perfil e a ordem dos campos em cada um (oficiais e, por último, legados). */
 export const BLOCOS_PERFIL: { secao: SecaoPerfil; titulo: string; campos: ChaveCampo[] }[] = (
   [
-    ["identificacao", "Identificação do Cliente"],
+    ["identificacao", "Perfil do Cliente"],
     ["contato", "Contato"],
     ["processo", "Processo"],
     ["interno", "Informações Internas"],

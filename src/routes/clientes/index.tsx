@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { BotaoImportarClientes } from "@/components/DialogImportar";
+import { CpfCliente } from "@/components/CpfCliente";
 import { NumerosProcessos } from "@/components/NumerosProcessos";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
@@ -35,7 +36,6 @@ import {
   useFiltroEscritorio,
   useVinculosEscritorio,
 } from "@/lib/escritorio";
-import { NAO_INFORMADO } from "@/lib/rf/campos";
 import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -210,12 +210,8 @@ function Clientes() {
                         ))}
                       </span>
                     </TableCell>
-                    <TableCell className="tabular text-sm">
-                      {cliente.cpf?.trim() ? (
-                        cliente.cpf
-                      ) : (
-                        <span className="text-muted-foreground">{NAO_INFORMADO}</span>
-                      )}
+                    <TableCell className="text-sm">
+                      <CpfCliente cliente={cliente} />
                     </TableCell>
                     <TableCell>
                       <NumerosProcessos

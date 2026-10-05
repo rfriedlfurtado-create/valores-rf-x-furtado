@@ -8,14 +8,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { BlocoExpansivel } from "@/components/BlocoExpansivel";
 import { BLOCOS_PERFIL, blocoPerfil, CAMPOS_OFICIAIS, type ChaveCampo } from "@/lib/rf/campos";
-import { organizarCampos, resumoDoBloco, valorDoCliente } from "@/lib/rf/perfil";
+import {
+  CAMPOS_PERFIL_CLIENTE,
+  cpfUnificado,
+  organizarCampos,
+  resumoDoBloco,
+  valorDoCliente,
+} from "@/lib/rf/perfil";
 
 const de = (o: Partial<Record<ChaveCampo, string>>) => (c: ChaveCampo) => o[c];
 
 describe("blocos do perfil", () => {
   test("os 4 blocos cobrem os 22 campos oficiais, cada um uma única vez", () => {
     expect(BLOCOS_PERFIL.map((b) => b.titulo)).toEqual([
-      "Identificação do Cliente",
+      "Perfil do Cliente",
       "Contato",
       "Processo",
       "Informações Internas",
@@ -145,5 +151,38 @@ describe("abertura dos blocos", () => {
   test("modo controlado segue a propriedade aberto", () => {
     expect(render({ aberto: false, inicialAberto: true })).toContain('aria-expanded="false"');
     expect(render({ aberto: true })).toContain('aria-expanded="true"');
+  });
+});
+
+describe("PERFIL DO CLIENTE — seção única e CPF único", () => {
+  test("nome e CPFs não se repetem nos campos expandidos", () => {
+    expect(CAMPOS_PERFIL_CLIENTE).not.toContain("nome");
+    expect(CAMPOS_PERFIL_CLIENTE).not.toContain("cpf_reclamante");
+    expect(CAMPOS_PERFIL_CLIENTE).not.toContain("cpf_cnpj");
+    expect(CAMPOS_PERFIL_CLIENTE).toEqual(
+      expect.arrayContaining(["cidade", "data_nascimento", "cep"]),
+    );
+  });
+
+  test("CPF único: cadastro; na falta, coluna CPF; divergência só sinalizada", () => {
+    expect(cpfUnificado({ cpf: "529.982.247-25", dados_rf: { cpf_cnpj: "52998224725" } })).toEqual({
+      cpf: "529.982.247-25",
+      origem: "cadastro",
+      divergente: false,
+      outro: null,
+    });
+    expect(cpfUnificado({ cpf: null, dados_rf: { cpf_cnpj: "111.444.777-35" } })).toMatchObject({
+      cpf: "111.444.777-35",
+      origem: "coluna_cpf",
+    });
+    expect(
+      cpfUnificado({ cpf: "529.982.247-25", dados_rf: { cpf_cnpj: "111.444.777-35" } }),
+    ).toEqual({
+      cpf: "529.982.247-25",
+      origem: "cadastro",
+      divergente: true,
+      outro: "111.444.777-35",
+    });
+    expect(cpfUnificado({ cpf: " ", dados_rf: null }).cpf).toBeNull();
   });
 });

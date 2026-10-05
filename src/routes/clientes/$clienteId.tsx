@@ -54,7 +54,13 @@ import {
   type RegistroRF,
   type RevisaoRF,
 } from "@/lib/rf/dados";
-import { organizarCampos, resumoDoBloco, valorDoCliente } from "@/lib/rf/perfil";
+import {
+  CAMPOS_PERFIL_CLIENTE,
+  cpfUnificado,
+  organizarCampos,
+  resumoDoBloco,
+  valorDoCliente,
+} from "@/lib/rf/perfil";
 import {
   converterTextoDigitado,
   extrairTelefones,
@@ -195,26 +201,11 @@ function PerfilCliente() {
     <div className="space-y-6">
       <div>
         <Voltar visao={visao} />
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Perfil do cliente
-            </p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              {cliente.nome}
-            </h1>
-            <p className="mt-1 text-base">
-              <span className="text-muted-foreground">CPF: </span>
-              <span
-                className={cn(
-                  "tabular font-semibold",
-                  !cliente.cpf && "font-normal text-muted-foreground",
-                )}
-              >
-                {cliente.cpf || NAO_INFORMADO}
-              </span>
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1">
+        <SecaoPerfilCliente
+          key={`${cliente.id}-perfil`}
+          perfil={perfil}
+          badges={
+            <>
               {escritoriosDoCliente(cliente, vinculos).map((e) => (
                 <BadgeEscritorio key={e} escritorio={e} completo />
               ))}
@@ -231,18 +222,9 @@ function PerfilCliente() {
               ) : cliente.status === "pago" ? (
                 <BadgeStatus texto="Já pago" tom="sucesso" />
               ) : null}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <BotaoExcluirCliente
-              cliente={{
-                id: cliente.id,
-                nome: cliente.nome,
-                quantidadePagamentos: perfil.pagamentos.length,
-              }}
-            />
-          </div>
-        </div>
+            </>
+          }
+        />
       </div>
 
       {/* PROCESSOS logo abaixo do nome e CPF: escolhe o processo exibido no perfil. */}
@@ -272,7 +254,6 @@ function PerfilCliente() {
         semProcesso={selecionado === SEM_PROCESSO}
       />
 
-      <BlocoCliente key={`${cliente.id}-identificacao`} perfil={perfil} secao="identificacao" />
       <BlocoCliente key={`${cliente.id}-contato`} perfil={perfil} secao="contato" />
 
       <OrigemEHistorico perfil={perfil} registro={registroAtual} />
@@ -560,7 +541,247 @@ function CamposDoBloco({
 }
 
 // ---------------------------------------------------------------------------
-// Blocos do cliente (Identificação e Contato)
+// PERFIL DO CLIENTE — seção única (antigo cabeçalho + "Identificação do Cliente")
+// ---------------------------------------------------------------------------
+
+/**
+ * Nome (Reclamante) e CPF sempre visíveis e editáveis no topo, sem repetição.
+ * "Expandir" mostra os demais dados do cadastro (recolhido por padrão).
+ * CPF do cadastro x coluna "CPF" da planilha diferentes → aviso para
+ * conferência; nada é sobrescrito automaticamente.
+ */
+function SecaoPerfilCliente({ perfil, badges }: { perfil: PerfilRF; badges: ReactNode }) {
+  const { cliente } = perfil;
+  const [aberto, setAberto] = useState(false);
+  const id = useId();
+  const valor = valorDoCliente(cliente);
+  const cpf = cpfUnificado(cliente);
+  const salvarCliente = (campo: ChaveCampo) => (v: string | null) =>
+    editarCampo({ entidade: "cliente", id: cliente.id, campo, valor: v });
+  const resumo = resumoDoBloco(CAMPOS_PERFIL_CLIENTE, valor);
+
+  return (
+    <Card className="gap-0 p-0">
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Perfil do cliente
+          </p>
+          <EditorInline
+            chave="nome"
+            rotulo="Reclamante"
+            valor={cliente.nome}
+            obrigatorio
+            salvar={salvarCliente("nome")}
+          >
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {cliente.nome}
+            </h1>
+          </EditorInline>
+          <EditorInline
+            chave="cpf_reclamante"
+            rotulo="CPF"
+            valor={cpf.cpf}
+            salvar={salvarCliente("cpf_reclamante")}
+          >
+            <p className="text-base">
+              <span className="text-muted-foreground">CPF: </span>
+              <span
+                className={cn(
+                  "tabular font-semibold",
+                  !cpf.cpf && "font-normal text-muted-foreground",
+                )}
+              >
+                {cpf.cpf || NAO_INFORMADO}
+              </span>
+              {cpf.origem === "coluna_cpf" ? (
+                <span className="ml-2 text-xs text-muted-foreground">(coluna CPF da planilha)</span>
+              ) : null}
+            </p>
+          </EditorInline>
+          {cpf.divergente ? <AvisoCpfDivergente perfil={perfil} outro={cpf.outro!} /> : null}
+          <div className="mt-2 flex flex-wrap gap-1">{badges}</div>
+          {!aberto && resumo.length ? (
+            <p className="mt-2 text-sm text-muted-foreground">{resumo.join(" · ")}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAberto((a) => !a)}
+            aria-expanded={aberto}
+            aria-controls={id}
+          >
+            <ChevronDown
+              className={cn("size-4 transition-transform", aberto && "rotate-180")}
+              aria-hidden
+            />
+            {aberto ? "Recolher" : "Expandir"}
+          </Button>
+          <BotaoExcluirCliente
+            cliente={{
+              id: cliente.id,
+              nome: cliente.nome,
+              quantidadePagamentos: perfil.pagamentos.length,
+            }}
+          />
+        </div>
+      </div>
+      {aberto ? (
+        <div id={id} className="border-t border-border">
+          <CamposDoBloco
+            campos={CAMPOS_PERFIL_CLIENTE}
+            valor={valor}
+            renderizar={(chave) => (
+              <CampoEditavel
+                key={chave}
+                chave={chave}
+                valor={valor(chave)}
+                salvar={salvarCliente(chave)}
+              />
+            )}
+          />
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/** CPF do cadastro diferente da coluna "CPF" da planilha: só sinaliza; a escolha é do usuário. */
+function AvisoCpfDivergente({ perfil, outro }: { perfil: PerfilRF; outro: string }) {
+  const sincronizar = useSincronizar();
+  const { cliente } = perfil;
+  const mutation = useMutation({
+    mutationFn: () =>
+      editarCampo({ entidade: "cliente", id: cliente.id, campo: "cpf_reclamante", valor: outro }),
+    onSuccess: async () => {
+      await sincronizar(EVENTOS.CLIENTE_ATUALIZADO);
+      toast.success("CPF atualizado. O valor anterior ficou registrado no histórico.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning sm:flex-row sm:items-center sm:justify-between">
+      <p className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          CPF divergente para conferência: a coluna “CPF” da planilha traz{" "}
+          <strong className="tabular">{outro}</strong>, diferente do CPF do cadastro (
+          <span className="tabular">{cliente.cpf}</span>). Nada foi alterado automaticamente.
+        </span>
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="shrink-0"
+        disabled={mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        Usar {outro}
+      </Button>
+    </div>
+  );
+}
+
+/** Valor sempre visível com edição no próprio lugar (nome e CPF do perfil). */
+function EditorInline({
+  chave,
+  rotulo,
+  valor,
+  salvar,
+  obrigatorio,
+  children,
+}: {
+  chave: ChaveCampo;
+  rotulo: string;
+  valor: string | null | undefined;
+  salvar: (valor: string | null) => Promise<void>;
+  obrigatorio?: boolean;
+  children: ReactNode;
+}) {
+  const sincronizar = useSincronizar();
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState("");
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const bruto = texto.trim();
+      if (obrigatorio && !bruto) throw new Error("O nome do cliente é obrigatório.");
+      const convertido = bruto ? converterTextoDigitado(chave, bruto) : null;
+      await salvar(bruto ? (convertido?.valor ?? bruto) : null);
+      return convertido?.avisos ?? [];
+    },
+    onSuccess: async (avisos) => {
+      await sincronizar(EVENTOS.CLIENTE_ATUALIZADO);
+      setEditando(false);
+      if (avisos.length) toast.warning(avisos.join(" "));
+      else toast.success(`${rotulo} atualizado.`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (editando)
+    return (
+      <form
+        className="mt-1 flex max-w-xl items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          mutation.mutate();
+        }}
+      >
+        <Input
+          autoFocus
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          className="h-9"
+          aria-label={rotulo}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setEditando(false);
+          }}
+        />
+        <Button
+          type="submit"
+          size="icon"
+          className="size-9 shrink-0"
+          disabled={mutation.isPending}
+          aria-label="Salvar"
+        >
+          <Check className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-9 shrink-0"
+          onClick={() => setEditando(false)}
+          aria-label="Cancelar"
+        >
+          <X className="size-4" />
+        </Button>
+      </form>
+    );
+  return (
+    <div className="group mt-1 flex flex-wrap items-center gap-1">
+      {children}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 text-muted-foreground"
+        onClick={() => {
+          setTexto(valorParaEdicao(chave, valor));
+          setEditando(true);
+        }}
+        aria-label={`Editar ${rotulo}`}
+        title={`Editar ${rotulo}`}
+      >
+        <Pencil className="size-3.5" aria-hidden />
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bloco Contato
 // ---------------------------------------------------------------------------
 
 function BlocoCliente({
@@ -569,7 +790,7 @@ function BlocoCliente({
   inicialAberto,
 }: {
   perfil: PerfilRF;
-  secao: "identificacao" | "contato";
+  secao: "contato";
   inicialAberto?: boolean;
 }) {
   const { cliente } = perfil;

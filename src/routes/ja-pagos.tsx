@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { BotaoImportarClientes } from "@/components/DialogImportar";
+import { CpfCliente } from "@/components/CpfCliente";
 import { NumerosProcessos } from "@/components/NumerosProcessos";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
@@ -171,6 +172,7 @@ function JaPagos() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="min-w-52">Nome</TableHead>
+                <TableHead className="min-w-36">CPF</TableHead>
                 <TableHead className="min-w-56">Processos pagos</TableHead>
                 <TableHead className="text-right">Total recebido</TableHead>
                 <TableHead className="text-center">Pagamentos</TableHead>
@@ -189,6 +191,9 @@ function JaPagos() {
                         <BadgeEscritorio key={e} escritorio={e} />
                       ))}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <CpfCliente cliente={cliente} />
                   </TableCell>
                   <TableCell>
                     <NumerosProcessos

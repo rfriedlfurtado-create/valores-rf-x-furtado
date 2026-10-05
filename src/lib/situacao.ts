@@ -143,6 +143,8 @@ export function correspondeBusca(
     nome_normalizado: string;
     cpf: string | null;
     numero_processo?: string | null;
+    /** Coluna "CPF" da planilha (mesmo CPF exibido no perfil quando falta o do cadastro). */
+    dados_rf?: { cpf_cnpj?: string | null } | null;
   },
   termo: string,
   variacoesPorCliente?: Map<string, string[]>,
@@ -156,6 +158,7 @@ export function correspondeBusca(
   const digitos = termo.replace(/\D/g, "");
   if (digitos.length >= 3) {
     if ((cliente.cpf ?? "").replace(/\D/g, "").includes(digitos)) return true;
+    if ((cliente.dados_rf?.cpf_cnpj ?? "").replace(/\D/g, "").includes(digitos)) return true;
     if ((cliente.numero_processo ?? "").replace(/\D/g, "").includes(digitos)) return true;
     if ((identificadoresPorCliente?.get(cliente.id) ?? []).some((d) => d.includes(digitos)))
       return true;
