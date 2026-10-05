@@ -16,6 +16,7 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
+import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { SecaoVazia } from "@/components/layout/AppShell";
@@ -33,8 +34,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BadgeEscritorio, escritoriosDoCliente, useVinculosEscritorio } from "@/lib/escritorio";
-import { formatDate, formatDateTime } from "@/lib/format";
-import { CAMPO_POR_CHAVE, NAO_INFORMADO, SECOES_PERFIL, type ChaveCampo } from "@/lib/rf/campos";
+import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
+import { blocoPerfil, CAMPO_POR_CHAVE, NAO_INFORMADO, type ChaveCampo } from "@/lib/rf/campos";
 import {
   dadosDoRegistro,
   editarCampo,
@@ -44,6 +45,7 @@ import {
   type RegistroRF,
   type RevisaoRF,
 } from "@/lib/rf/dados";
+import { organizarCampos, resumoDoBloco, valorDoCliente } from "@/lib/rf/perfil";
 import {
   converterTextoDigitado,
   extrairTelefones,
@@ -185,38 +187,20 @@ function PerfilCliente() {
 
       {revisoesAbertas.length ? <Revisoes perfil={perfil} revisoes={revisoesAbertas} /> : null}
 
-      {/* Dados pessoais e Contatos: sempre começam recolhidos ao abrir um perfil. */}
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        {SECOES_PERFIL.filter((s) => s.secao === "pessoais" || s.secao === "contatos").map(
-          (secao) => (
-            <SecaoRecolhivel key={`${cliente.id}-${secao.secao}`} titulo={secao.titulo}>
-              {secao.campos.map((chave) => {
-                const valor =
-                  chave === "nome"
-                    ? cliente.nome
-                    : chave === "cpf_reclamante"
-                      ? cliente.cpf
-                      : cliente.dados_rf[chave];
-                return (
-                  <CampoEditavel
-                    key={chave}
-                    chave={chave}
-                    valor={valor}
-                    obrigatorio={chave === "nome"}
-                    salvar={(v) =>
-                      editarCampo({ entidade: "cliente", id: cliente.id, campo: chave, valor: v })
-                    }
-                  />
-                );
-              })}
-            </SecaoRecolhivel>
-          ),
-        )}
-      </div>
-
-      <Registros
+      {/* Blocos expansíveis: informações principais sempre visíveis; secundárias ao expandir. */}
+      <BlocoCliente
+        key={`${cliente.id}-identificacao`}
         perfil={perfil}
-        atual={registroAtual}
+        secao="identificacao"
+        inicialAberto
+      />
+      <BlocoCliente key={`${cliente.id}-contato`} perfil={perfil} secao="contato" />
+
+      <BlocoProcessos
+        key={`${cliente.id}-processos`}
+        perfil={perfil}
+        selecionado={registroAtual?.id ?? null}
+        abertoInicial={registroSelecionado ?? null}
         selecionar={(id) =>
           void navigate({
             to: "/clientes/$clienteId",
@@ -228,56 +212,19 @@ function PerfilCliente() {
         }
       />
 
+      <BlocoInterno key={`${cliente.id}-interno`} perfil={perfil} />
+
+      <BlocoEntradas key={`${cliente.id}-entradas`} perfil={perfil} />
+
       <OrigemEHistorico perfil={perfil} />
     </div>
   );
 }
 
-/** Card que começa recolhido; o cabeçalho expande e recolhe o conteúdo. */
-function SecaoRecolhivel({ titulo, children }: { titulo: string; children: ReactNode }) {
-  const [aberto, setAberto] = useState(false);
-  const id = useId();
-  return (
-    <Card className="gap-0 p-0">
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        aria-expanded={aberto}
-        aria-controls={id}
-        className={cn(
-          "flex w-full items-center justify-between gap-3 rounded-xl px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          aberto && "rounded-b-none border-b border-border",
-        )}
-      >
-        <h2 className="text-base font-semibold">{titulo}</h2>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            aberto && "rotate-180",
-          )}
-          aria-hidden
-        />
-        <span className="sr-only">{aberto ? "Recolher" : "Expandir"}</span>
-      </button>
-      <dl id={id} hidden={!aberto} className="divide-y divide-border">
-        {children}
-      </dl>
-    </Card>
-  );
-}
-
 /**
- * Campo com informação: qualquer texto não vazio. "0", "Não" e "Sem registro"
- * são informações preenchidas.
- */
-function campoPreenchido(valor: string | null | undefined): boolean {
-  return valor !== null && valor !== undefined && String(valor).trim() !== "";
-}
-
-/**
- * Parte inferior do card "Processo ou atendimento": campos sem informação,
- * recolhidos por padrão. Ao salvar um valor, o campo volta à posição habitual
- * (lista de preenchidos); ao apagar, retorna para cá.
+ * Parte inferior de cada bloco: campos sem informação, recolhidos por padrão
+ * (continuam previstos para preenchimento manual ou futuras importações). Ao
+ * salvar um valor, o campo volta à posição habitual; ao apagar, retorna para cá.
  */
 function CamposNaoPreenchidos({
   campos,
@@ -295,7 +242,7 @@ function CamposNaoPreenchidos({
     <div>
       {todosVazios ? (
         <div className="px-5 py-4 text-sm text-muted-foreground">
-          Nenhum campo deste registro está preenchido.
+          Nenhum campo deste bloco está preenchido.
         </div>
       ) : null}
       <button
@@ -524,6 +471,7 @@ const GRUPOS_PAGAMENTO: {
   chave: ClassificacaoEntrada | "outros_grupos" | "sem";
   titulo: string;
 }[] = [
+  { chave: "contratuais", titulo: "Contratuais" },
   { chave: "implantacao", titulo: "Implantação" },
   { chave: "sucumbencia", titulo: "Sucumbência" },
   { chave: "atrasados", titulo: "Atrasados" },
@@ -534,6 +482,7 @@ const GRUPOS_PAGAMENTO: {
 function grupoDoPagamento(p: Pagamento): (typeof GRUPOS_PAGAMENTO)[number]["chave"] {
   if (!p.classificacao) return "sem";
   if (
+    p.classificacao === "contratuais" ||
     p.classificacao === "implantacao" ||
     p.classificacao === "sucumbencia" ||
     p.classificacao === "atrasados"
@@ -542,205 +491,396 @@ function grupoDoPagamento(p: Pagamento): (typeof GRUPOS_PAGAMENTO)[number]["chav
   return "outros_grupos";
 }
 
-function Registros({
-  perfil,
-  atual,
-  selecionar,
+/**
+ * Conteúdo de um bloco: principais e secundárias preenchidas e, por último,
+ * os campos vazios recolhidos em "Campos não preenchidos".
+ */
+function CamposDoBloco({
+  campos,
+  valor,
+  renderizar,
 }: {
-  perfil: PerfilRF;
-  atual: RegistroRF | null;
-  selecionar: (id: string) => void;
+  campos: ChaveCampo[];
+  valor: (chave: ChaveCampo) => string | null | undefined;
+  renderizar: (chave: ChaveCampo) => ReactNode;
 }) {
-  const linhasPorRegistro = useMemo(() => {
-    const m = new Map<string, PerfilRF["linhas"]>();
-    for (const l of perfil.linhas) {
-      if (!l.atendimento_id) continue;
-      m.set(l.atendimento_id, [...(m.get(l.atendimento_id) ?? []), l]);
-    }
-    return m;
-  }, [perfil.linhas]);
-
-  if (perfil.registros.length === 0) {
-    return (
-      <Secao titulo="Processos e atendimentos">
-        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-          Nenhum processo ou atendimento registrado.
-        </div>
-      </Secao>
-    );
-  }
-
-  const dados = atual ? dadosDoRegistro(atual) : {};
-  const pagamentos = atual ? perfil.pagamentos.filter((p) => p.atendimento_id === atual.id) : [];
-  const linhas = atual ? (linhasPorRegistro.get(atual.id) ?? []) : [];
-  const pagamentosSemRegistro = perfil.pagamentos.filter((p) => !p.atendimento_id);
-
+  const org = organizarCampos(campos, valor);
   return (
-    <section className="space-y-4" aria-labelledby="titulo-registros">
-      <div>
-        <h2 id="titulo-registros" className="text-lg font-semibold">
-          Processos e atendimentos ({perfil.registros.length})
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Cada processo ou tipo de ação diferente é um registro próprio. Selecione um registro para
-          ver todos os campos.
-        </p>
-      </div>
-
-      <div
-        className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
-        role="tablist"
-        aria-label="Registros do cliente"
-      >
-        {perfil.registros.map((r) => {
-          const d = dadosDoRegistro(r);
-          const ativo = r.id === atual?.id;
-          const qtdLinhas = linhasPorRegistro.get(r.id)?.length ?? 0;
-          return (
-            <button
-              key={r.id}
-              type="button"
-              role="tab"
-              aria-selected={ativo}
-              onClick={() => selecionar(r.id)}
-              className={cn(
-                "rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                ativo ? "border-primary shadow-[inset_3px_0_0_0_var(--primary)]" : "border-border",
-              )}
-            >
-              <p className="tabular text-sm font-semibold">{d.numero || "Sem número"}</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {d.tipo_acao || "Tipo de ação não informado"}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <BadgeEscritorio escritorio={r.escritorio} />
-                {d.situacao ? (
-                  <BadgeStatus
-                    texto={d.situacao}
-                    tom={d.situacao === "Ativo" ? "sucesso" : "neutro"}
-                  />
-                ) : null}
-                {r.revisao_motivo ? <BadgeStatus texto="Revisar associação" tom="alerta" /> : null}
-                {qtdLinhas > 1 ? <BadgeStatus texto={`${qtdLinhas} linhas`} tom="neutro" /> : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {atual ? (
-        <div className="space-y-4">
-          {atual.revisao_motivo ? (
-            <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <p>
-                {atual.revisao_motivo}. Este registro não foi unido a nenhum outro automaticamente —
-                complete o número e o tipo de ação ou revise a associação.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            {SECOES_PERFIL.filter((s) => s.secao === "processo" || s.secao === "captacao").map(
-              (secao) => (
-                <Secao
-                  key={secao.secao}
-                  titulo={secao.titulo}
-                  descricao={
-                    secao.secao === "captacao"
-                      ? "Vinculado a este processo ou atendimento."
-                      : rotuloRegistro(atual)
-                  }
-                >
-                  {(secao.secao === "processo"
-                    ? secao.campos.filter((c) => campoPreenchido(dados[c]))
-                    : secao.campos
-                  ).map((chave) => (
-                    <CampoEditavel
-                      key={`${atual.id}-${chave}`}
-                      chave={chave}
-                      valor={dados[chave]}
-                      salvar={(v) =>
-                        editarCampo({
-                          entidade: "registro",
-                          id: atual.id,
-                          campo: chave,
-                          valor: v,
-                          registro: dados,
-                        })
-                      }
-                    />
-                  ))}
-                  {secao.secao === "processo" ? (
-                    <CamposNaoPreenchidos
-                      key={`vazios-${atual.id}`}
-                      campos={secao.campos.filter((c) => !campoPreenchido(dados[c]))}
-                      todosVazios={secao.campos.every((c) => !campoPreenchido(dados[c]))}
-                      renderizar={(chave) => (
-                        <CampoEditavel
-                          key={`${atual.id}-${chave}`}
-                          chave={chave}
-                          valor={dados[chave]}
-                          salvar={(v) =>
-                            editarCampo({
-                              entidade: "registro",
-                              id: atual.id,
-                              campo: chave,
-                              valor: v,
-                              registro: dados,
-                            })
-                          }
-                        />
-                      )}
-                    />
-                  ) : null}
-                </Secao>
-              ),
-            )}
-          </div>
-
-          {Object.keys(atual.informacoes_adicionais ?? {}).length ? (
-            <Secao
-              titulo="Informações adicionais"
-              descricao="Colunas extras da planilha, preservadas como recebidas."
-            >
-              {Object.entries(atual.informacoes_adicionais).map(([k, v]) => (
-                <CampoEditavel
-                  key={k}
-                  chave={k}
-                  rotulo={k}
-                  valor={v}
-                  salvar={(novo) =>
-                    editarCampo({ entidade: "adicional", id: atual.id, campo: k, valor: novo })
-                  }
-                />
-              ))}
-            </Secao>
-          ) : null}
-
-          <PagamentosDoRegistro pagamentos={pagamentos} />
-
-          {linhas.length ? <LinhasDeOrigem linhas={linhas} perfil={perfil} /> : null}
-        </div>
-      ) : null}
-
-      {pagamentosSemRegistro.length ? (
-        <Secao
-          titulo="Pagamentos sem processo vinculado"
-          descricao="Registrados para o cliente, sem indicar o processo."
-        >
-          <TabelaPagamentos pagamentos={pagamentosSemRegistro} />
-        </Secao>
-      ) : null}
-    </section>
+    <dl className="divide-y divide-border">
+      {[...org.principais, ...org.secundarios].map((c) => renderizar(c))}
+      <CamposNaoPreenchidos
+        campos={org.vazios}
+        todosVazios={org.principais.length + org.secundarios.length === 0}
+        renderizar={renderizar}
+      />
+    </dl>
   );
 }
 
-function PagamentosDoRegistro({ pagamentos }: { pagamentos: Pagamento[] }) {
+// ---------------------------------------------------------------------------
+// Blocos do cliente (Identificação e Contato)
+// ---------------------------------------------------------------------------
+
+function BlocoCliente({
+  perfil,
+  secao,
+  inicialAberto,
+}: {
+  perfil: PerfilRF;
+  secao: "identificacao" | "contato";
+  inicialAberto?: boolean;
+}) {
+  const { cliente } = perfil;
+  const bloco = blocoPerfil(secao);
+  const valor = valorDoCliente(cliente);
+  return (
+    <BlocoExpansivel
+      titulo={bloco.titulo}
+      inicialAberto={inicialAberto}
+      resumo={<ResumoLinhas itens={resumoDoBloco(bloco.campos, valor)} />}
+    >
+      <CamposDoBloco
+        campos={bloco.campos}
+        valor={valor}
+        renderizar={(chave) => (
+          <CampoEditavel
+            key={chave}
+            chave={chave}
+            valor={valor(chave)}
+            obrigatorio={chave === "nome"}
+            salvar={(v) =>
+              editarCampo({ entidade: "cliente", id: cliente.id, campo: chave, valor: v })
+            }
+          />
+        )}
+      />
+    </BlocoExpansivel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Processos (um cliente pode ter vários)
+// ---------------------------------------------------------------------------
+
+function linhasPorRegistro(perfil: PerfilRF) {
+  const m = new Map<string, PerfilRF["linhas"]>();
+  for (const l of perfil.linhas) {
+    if (!l.atendimento_id) continue;
+    m.set(l.atendimento_id, [...(m.get(l.atendimento_id) ?? []), l]);
+  }
+  return m;
+}
+
+function salvarCampoRegistro(r: RegistroRF, chave: ChaveCampo) {
+  return (v: string | null) =>
+    editarCampo({
+      entidade: "registro",
+      id: r.id,
+      campo: chave,
+      valor: v,
+      registro: dadosDoRegistro(r),
+    });
+}
+
+function BlocoProcessos({
+  perfil,
+  selecionado,
+  abertoInicial,
+  selecionar,
+}: {
+  perfil: PerfilRF;
+  /** Processo usado no botão "Registrar pagamento" do topo (destacado). */
+  selecionado: string | null;
+  /** Processo aberto ao carregar (link com ?registro=). */
+  abertoInicial: string | null;
+  selecionar: (id: string) => void;
+}) {
+  const bloco = blocoPerfil("processo");
+  const linhas = useMemo(() => linhasPorRegistro(perfil), [perfil]);
+  const [abertos, setAbertos] = useState<Set<string>>(
+    () => new Set(abertoInicial ? [abertoInicial] : []),
+  );
+  const total = perfil.registros.length;
+
+  const resumo =
+    total === 0 ? (
+      <span>Nenhum processo registrado.</span>
+    ) : (
+      <ResumoLinhas
+        itens={[
+          ...perfil.registros.slice(0, 3).map((r) => {
+            const d = dadosDoRegistro(r);
+            return resumoDoBloco(bloco.campos, (c) => d[c]).join(" · ") || "Sem número";
+          }),
+          ...(total > 3 ? [`+ ${total - 3} processo(s)`] : []),
+        ]}
+      />
+    );
+
+  return (
+    <BlocoExpansivel titulo={`Processos (${total})`} inicialAberto resumo={resumo}>
+      {total === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+          Nenhum processo ou atendimento registrado.
+        </div>
+      ) : (
+        <div className="space-y-3 p-4">
+          {total > 1 ? (
+            <p className="px-1 text-xs text-muted-foreground">
+              Cada processo (número + tipo de ação) é um registro próprio dentro da mesma pasta do
+              cliente.
+            </p>
+          ) : null}
+          {perfil.registros.map((r) => {
+            const d = dadosDoRegistro(r);
+            const qtdLinhas = linhas.get(r.id)?.length ?? 0;
+            const aberto = abertos.has(r.id);
+            const pagamentos = perfil.pagamentos.filter((p) => p.atendimento_id === r.id);
+            return (
+              <BlocoExpansivel
+                key={r.id}
+                aninhado
+                aberto={aberto}
+                aoAlternar={(novo) => {
+                  setAbertos((atual) => {
+                    const n = new Set(atual);
+                    if (novo) n.add(r.id);
+                    else n.delete(r.id);
+                    return n;
+                  });
+                  if (novo) selecionar(r.id);
+                }}
+                className={cn(
+                  r.id === selecionado && "border-primary shadow-[inset_3px_0_0_0_var(--primary)]",
+                )}
+                titulo={
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="tabular">{d.numero || "Sem número"}</span>
+                    <BadgeEscritorio escritorio={r.escritorio} />
+                    {r.revisao_motivo ? (
+                      <BadgeStatus texto="Revisar associação" tom="alerta" />
+                    ) : null}
+                    {qtdLinhas > 1 ? (
+                      <BadgeStatus texto={`${qtdLinhas} linhas`} tom="neutro" />
+                    ) : null}
+                    {pagamentos.length ? (
+                      <BadgeStatus
+                        texto={`${pagamentos.length} entrada(s) de valor`}
+                        tom="sucesso"
+                      />
+                    ) : null}
+                  </span>
+                }
+                resumo={
+                  <ResumoLinhas
+                    itens={organizarCampos(bloco.campos, (c) => d[c])
+                      .principais.filter((c) => c !== "numero")
+                      .map((c) => formatarValor(c, d[c]))}
+                  />
+                }
+              >
+                {r.revisao_motivo ? (
+                  <div className="flex items-start gap-3 border-b border-border bg-warning-soft px-4 py-3 text-sm text-warning">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <p>
+                      {r.revisao_motivo}. Este registro não foi unido a nenhum outro automaticamente
+                      — complete o número e o tipo de ação ou revise a associação.
+                    </p>
+                  </div>
+                ) : null}
+                <CamposDoBloco
+                  campos={bloco.campos}
+                  valor={(c) => d[c]}
+                  renderizar={(chave) => (
+                    <CampoEditavel
+                      key={`${r.id}-${chave}`}
+                      chave={chave}
+                      valor={d[chave]}
+                      salvar={salvarCampoRegistro(r, chave)}
+                    />
+                  )}
+                />
+                <div className="space-y-4 border-t border-border p-4">
+                  <div className="flex justify-end">
+                    <DialogPagamento
+                      clienteFixo={perfil.cliente}
+                      registro={{ id: r.id, rotulo: rotuloRegistro(r) }}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <Plus className="size-4" aria-hidden />
+                          Registrar pagamento neste processo
+                        </Button>
+                      }
+                    />
+                  </div>
+                  {Object.keys(r.informacoes_adicionais ?? {}).length ? (
+                    <Secao
+                      titulo="Informações adicionais"
+                      descricao="Colunas extras da planilha, preservadas como recebidas."
+                    >
+                      {Object.entries(r.informacoes_adicionais).map(([k, v]) => (
+                        <CampoEditavel
+                          key={k}
+                          chave={k}
+                          rotulo={k}
+                          valor={v}
+                          salvar={(novo) =>
+                            editarCampo({ entidade: "adicional", id: r.id, campo: k, valor: novo })
+                          }
+                        />
+                      ))}
+                    </Secao>
+                  ) : null}
+                  {qtdLinhas ? (
+                    <LinhasDeOrigem linhas={linhas.get(r.id) ?? []} perfil={perfil} />
+                  ) : null}
+                </div>
+              </BlocoExpansivel>
+            );
+          })}
+        </div>
+      )}
+    </BlocoExpansivel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Informações internas (por processo: pasta, captação, contrato, indicação)
+// ---------------------------------------------------------------------------
+
+function BlocoInterno({ perfil }: { perfil: PerfilRF }) {
+  const bloco = blocoPerfil("interno");
+  const registros = perfil.registros;
+  const resumo =
+    registros.length === 0 ? (
+      <span>Sem processos registrados.</span>
+    ) : (
+      <ResumoLinhas
+        itens={[
+          ...registros.slice(0, 3).map((r) => {
+            const d = dadosDoRegistro(r);
+            return (
+              resumoDoBloco(bloco.campos, (c) => d[c]).join(" · ") ||
+              `${d.numero || "Sem número"}: sem informações internas`
+            );
+          }),
+          ...(registros.length > 3 ? [`+ ${registros.length - 3} processo(s)`] : []),
+        ]}
+      />
+    );
+
+  return (
+    <BlocoExpansivel titulo="Informações Internas" resumo={resumo}>
+      {registros.length === 0 ? (
+        <div className="px-5 py-6 text-sm text-muted-foreground">
+          As informações internas (pasta, captação, contrato e indicação) ficam vinculadas a cada
+          processo.
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {registros.map((r) => {
+            const d = dadosDoRegistro(r);
+            return (
+              <div key={r.id}>
+                {registros.length > 1 ? (
+                  <p className="bg-muted/30 px-5 py-2 text-xs font-semibold text-muted-foreground">
+                    {rotuloRegistro(r)}
+                  </p>
+                ) : null}
+                <CamposDoBloco
+                  campos={bloco.campos}
+                  valor={(c) => d[c]}
+                  renderizar={(chave) => (
+                    <CampoEditavel
+                      key={`${r.id}-${chave}`}
+                      chave={chave}
+                      valor={d[chave]}
+                      salvar={salvarCampoRegistro(r, chave)}
+                    />
+                  )}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </BlocoExpansivel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Entradas de valores (pagamentos efetivamente recebidos)
+// ---------------------------------------------------------------------------
+
+function BlocoEntradas({ perfil }: { perfil: PerfilRF }) {
+  const { pagamentos, registros } = perfil;
+  const total = pagamentos.reduce((s, p) => s + p.valor, 0);
+  const porGrupo = GRUPOS_PAGAMENTO.map((g) => {
+    const doGrupo = pagamentos.filter((p) => grupoDoPagamento(p) === g.chave);
+    return { ...g, qtd: doGrupo.length, soma: doGrupo.reduce((s, p) => s + p.valor, 0) };
+  }).filter((g) => g.qtd > 0);
+  const idsRegistros = new Set(registros.map((r) => r.id));
+  const semRegistro = pagamentos.filter(
+    (p) => !p.atendimento_id || !idsRegistros.has(p.atendimento_id),
+  );
+
+  const resumo =
+    pagamentos.length === 0 ? (
+      <span>Nenhuma entrada de valor registrada.</span>
+    ) : (
+      <ResumoLinhas
+        itens={[
+          `${pagamentos.length} entrada(s) · Total ${formatBRL(total)}`,
+          porGrupo.map((g) => `${g.titulo}: ${formatBRL(g.soma)}`).join(" · "),
+        ]}
+      />
+    );
+
+  return (
+    <BlocoExpansivel titulo="Entradas de valores" resumo={resumo}>
+      <div className="space-y-4 p-4">
+        <p className="text-xs text-muted-foreground">
+          Somente valores efetivamente recebidos. O “Valor Estimado do Processo” importado da
+          planilha é uma estimativa e não entra aqui.
+        </p>
+        {pagamentos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma entrada de valor registrada.</p>
+        ) : null}
+        {registros.map((r) => {
+          const doRegistro = pagamentos.filter((p) => p.atendimento_id === r.id);
+          if (doRegistro.length === 0) return null;
+          return (
+            <PagamentosDoRegistro
+              key={r.id}
+              pagamentos={doRegistro}
+              titulo={`Processo ${rotuloRegistro(r)}`}
+            />
+          );
+        })}
+        {semRegistro.length ? (
+          <Secao
+            titulo="Pagamentos sem processo vinculado"
+            descricao="Registrados para o cliente sem indicar o processo (ou com processo removido)."
+          >
+            <TabelaPagamentos pagamentos={semRegistro} />
+          </Secao>
+        ) : null}
+      </div>
+    </BlocoExpansivel>
+  );
+}
+
+function PagamentosDoRegistro({
+  pagamentos,
+  titulo = "Pagamentos deste registro",
+}: {
+  pagamentos: Pagamento[];
+  titulo?: string;
+}) {
   return (
     <Secao
-      titulo="Pagamentos deste registro"
-      descricao="Somente pagamentos registrados. Valores da planilha (Valor, Valor Captação, Salário, % Honorário) não são pagamentos."
+      titulo={titulo}
+      descricao="Somente valores efetivamente recebidos. O Valor Estimado do Processo e os demais valores da planilha não são pagamentos."
     >
       {pagamentos.length === 0 ? (
         <div className="px-5 py-6 text-sm text-muted-foreground">

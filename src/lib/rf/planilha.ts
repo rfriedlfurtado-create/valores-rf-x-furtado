@@ -11,7 +11,7 @@ import { normalizarTexto } from "@/lib/situacao";
 
 import {
   CAMPO_POR_CHAVE,
-  CAMPOS_MODELO,
+  CAMPOS_OFICIAIS,
   mapearCabecalhos,
   type ChaveCampo,
   type MapeamentoColunas,
@@ -218,6 +218,11 @@ export function interpretarLinhas(
       continue;
     }
 
+    // Identificação: "CPF Reclamante"; se vazio/ausente, a coluna "CPF" quando
+    // contém um CPF (11 dígitos). O valor da coluna "CPF" continua guardado.
+    if (!cpf && cliente.cpf_cnpj && somenteDigitos(cliente.cpf_cnpj).length === 11)
+      cpf = cliente.cpf_cnpj;
+
     const cpfDigitos = somenteDigitos(cpf) || null;
     const base: Omit<LinhaPayload, "chave"> = {
       linha: lida.linha,
@@ -244,7 +249,7 @@ export function interpretarLinhas(
 // Modelo vazio para download
 // ---------------------------------------------------------------------------
 
-export const ARQUIVO_MODELO = "/modelos/modelo-importacao-clientes-ricardo-friedl.xlsx";
+export const ARQUIVO_MODELO = "/modelos/modelo-clientes-rf-espaider.xlsx";
 
-/** Cabeçalhos do modelo, na ordem oficial. */
-export const CABECALHOS_MODELO = CAMPOS_MODELO.map((c) => c.cabecalho);
+/** Cabeçalhos do modelo oficial (planilha "CLIENTES RF - ESPAIDER"), na ordem oficial. */
+export const CABECALHOS_MODELO = CAMPOS_OFICIAIS.map((c) => c.cabecalho);

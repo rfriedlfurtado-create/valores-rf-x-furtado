@@ -49,7 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CAMPO_POR_CHAVE, CAMPOS_MODELO, type ChaveCampo } from "@/lib/rf/campos";
+import { CAMPO_POR_CHAVE, CAMPOS_OFICIAIS, type ChaveCampo } from "@/lib/rf/campos";
 import {
   gravarImportacao,
   registrarResumo,
@@ -77,7 +77,7 @@ export const Route = createFileRoute("/importar")({
       { title: "Importar clientes — Base de Pagamentos" },
       {
         name: "description",
-        content: "Importação de clientes do escritório Ricardo Friedl (modelo Espaider).",
+        content: "Importação de clientes no modelo oficial CLIENTES RF - ESPAIDER.",
       },
     ],
   }),
@@ -107,7 +107,6 @@ const ROTULO_REGISTRO: Record<ResultadoLinha["registro"], string> = {
 
 function rotuloCampo(campo: string): string {
   if (campo.startsWith("adicional:")) return `Informação adicional: ${campo.slice(10)}`;
-  if (campo === "cpf_reclamante") return "CPF do reclamante";
   return CAMPO_POR_CHAVE.get(campo as ChaveCampo)?.rotulo ?? campo;
 }
 
@@ -252,7 +251,7 @@ function ImportarClientes() {
 
   const camposDisponiveisParaExtras = useMemo(() => {
     if (!planilha) return [];
-    return CAMPOS_MODELO.filter((c) => planilha.mapeamento.ausentes.includes(c.chave));
+    return CAMPOS_OFICIAIS.filter((c) => planilha.mapeamento.ausentes.includes(c.chave));
   }, [planilha]);
 
   return (
@@ -266,7 +265,7 @@ function ImportarClientes() {
       </Button>
       <PageHeader
         titulo="Importar clientes"
-        descricao="Modelo Ricardo Friedl (relatório de clientes do Espaider). Somente “Reclamante” é obrigatório."
+        descricao="Modelo oficial: planilha “CLIENTES RF - ESPAIDER” (22 colunas). Somente “Reclamante” é obrigatório."
       >
         <Button asChild variant="outline">
           <a href={ARQUIVO_MODELO} download>
@@ -321,7 +320,8 @@ function ImportarClientes() {
               </li>
               <li>
                 <strong className="text-foreground">Opcionais:</strong> todas as demais colunas —
-                CPF, número, telefones, e-mail, pasta etc. Podem estar vazias ou ausentes.
+                CPF, número, cidade, telefones, e-mail, datas, valor estimado, pasta etc. Podem
+                estar vazias ou ausentes.
               </li>
               <li>
                 Antes de gravar, você vê uma prévia com novos, existentes, duplicidades e avisos.
@@ -330,7 +330,14 @@ function ImportarClientes() {
                 Reimportar o mesmo arquivo não duplica: linhas já importadas só complementam campos
                 vazios.
               </li>
-              <li>Nenhum valor da planilha é registrado como pagamento.</li>
+              <li>
+                Mesmo CPF = mesmo cliente (uma única pasta). Cada processo diferente fica como um
+                processo dentro da mesma pasta.
+              </li>
+              <li>
+                Nenhum valor da planilha é registrado como pagamento — o “Valor Estimado do
+                Processo” é só uma estimativa.
+              </li>
             </ul>
           </Card>
         </div>
@@ -361,8 +368,13 @@ function ImportarClientes() {
             <div>
               <p className="text-sm font-semibold">{arquivo}</p>
               <p className="text-xs text-muted-foreground">
-                Aba “{planilha.aba}” · {planilha.mapeamento.campos.size} coluna(s) do modelo
-                reconhecida(s)
+                Aba “{planilha.aba}” ·{" "}
+                {
+                  [...planilha.mapeamento.campos.values()].filter(
+                    (c) => !CAMPO_POR_CHAVE.get(c)!.legado,
+                  ).length
+                }{" "}
+                de {CAMPOS_OFICIAIS.length} coluna(s) do modelo oficial reconhecida(s)
                 {planilha.vazias
                   ? ` · ${planilha.vazias} linha(s) totalmente vazia(s) ignorada(s)`
                   : ""}

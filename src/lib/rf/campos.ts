@@ -1,9 +1,23 @@
 /**
- * MODELO PERMANENTE DE IMPORTAÇÃO — Ricardo Friedl (relatório Espaider).
+ * MAPEAMENTO OFICIAL DO IMPORTADOR — Ricardo Friedl (relatório Espaider).
  *
- * Referência: planilha "CLIENTES RICARDO - PELO ESPAIDER". O reconhecimento é
- * feito pelo CABEÇALHO (não pela posição nem pelo nome do arquivo), tolerando
- * diferenças de espaços, maiúsculas, acentos e separadores.
+ * Referência oficial: planilha "CLIENTES RF - ESPAIDER" (22 colunas). Este
+ * arquivo é o ÚNICO lugar com a correspondência
+ *
+ *   COLUNA DA PLANILHA → CAMPO INTERNO (chave) → ENTIDADE → BLOCO DO PERFIL
+ *
+ * O reconhecimento é feito pelo CABEÇALHO (não pela posição nem pelo nome do
+ * arquivo), tolerando diferenças de espaços, maiúsculas, acentos e separadores.
+ *
+ * Armazenamento (sem colunas novas — ver supabase/migrations/20261002200000):
+ *  - entidade "cliente"  → clientes.dados_rf[chave] (nome → clientes.nome,
+ *    CPF Reclamante → clientes.cpf / cpf_digitos)
+ *  - entidade "registro" → atendimentos.dados_rf[chave] (um registro por
+ *    processo: o mesmo cliente pode ter vários)
+ *
+ * Campos "legados" vieram do modelo anterior (28/29 colunas). Não fazem parte
+ * do modelo oficial nem do modelo vazio para download, mas continuam
+ * reconhecidos e exibidos para não perder dados já importados.
  *
  * Único campo obrigatório: Reclamante.
  */
@@ -25,82 +39,98 @@ export type TipoCampo =
   | "percentual"
   | "uf";
 
-export type SecaoPerfil = "pessoais" | "contatos" | "processo" | "captacao";
+/** Blocos do perfil do cliente. */
+export type SecaoPerfil = "identificacao" | "contato" | "processo" | "interno";
 
 export type ChaveCampo =
+  // modelo oficial (CLIENTES RF - ESPAIDER)
   | "numero"
   | "nome"
   | "adverso"
   | "tipo_acao"
-  | "valor"
   | "celular"
-  | "comarca"
-  | "uf_comarca"
+  | "cidade"
   | "distribuido_em"
   | "categoria"
   | "captador"
   | "captado_em"
-  | "valor_captacao"
-  | "juizo"
-  | "perc_honorario"
-  | "requisicao"
-  | "fase"
+  | "valor_estimado"
+  | "data_inicio_contrato"
   | "situacao"
   | "telefone_cliente"
   | "telefone_residencial"
   | "data_nascimento"
   | "email"
-  | "comarca_x"
   | "cpf_cnpj"
   | "indicacao"
-  | "salario"
   | "cep"
   | "cpf_reclamante"
-  | "pasta";
+  | "pasta"
+  // legados (modelo anterior)
+  | "valor"
+  | "comarca"
+  | "uf_comarca"
+  | "valor_captacao"
+  | "juizo"
+  | "perc_honorario"
+  | "requisicao"
+  | "fase"
+  | "comarca_x"
+  | "salario";
 
 export interface CampoModelo {
   chave: ChaveCampo;
-  /** Cabeçalho oficial, exatamente como no modelo. */
+  /** Cabeçalho oficial, exatamente como na planilha. */
   cabecalho: string;
   /** Nome do campo no sistema (rótulo do perfil). */
   rotulo: string;
   entidade: EntidadeCampo;
   tipo: TipoCampo;
+  /** Bloco do perfil onde o campo aparece. */
   secao: SecaoPerfil;
+  /**
+   * Informação principal do bloco: fica sempre visível (inclusive com o bloco
+   * recolhido). As demais aparecem ao expandir. Prioridade provisória — a
+   * definição final será feita depois, alterando só esta marcação.
+   */
+  principal?: boolean;
   obrigatorio?: boolean;
+  /** Campo do modelo anterior (fora do modelo oficial). */
+  legado?: boolean;
   /** Outras grafias aceitas (já normalizadas por `normalizarCabecalho`). */
   aliases?: string[];
 }
 
 /**
- * Ordem oficial do modelo (é a ordem do modelo Excel vazio para download).
- * As duas colunas "Comarca" são distintas: a 1ª ocorrência é a "Comarca —
- * coluna G" e a 2ª é a "Comarca — coluna X".
+ * Ordem oficial = ordem das colunas da planilha "CLIENTES RF - ESPAIDER"
+ * (é a ordem do modelo vazio para download). Os legados vêm depois.
  */
 export const CAMPOS_MODELO: CampoModelo[] = [
   {
     chave: "numero",
     cabecalho: "Número",
-    rotulo: "Número do processo ou atendimento",
+    rotulo: "Número do processo",
     entidade: "registro",
     tipo: "processo",
     secao: "processo",
+    principal: true,
     aliases: ["numero do processo", "processo", "n processo"],
   },
   {
     chave: "nome",
     cabecalho: "Reclamante",
-    rotulo: "Nome do cliente",
+    rotulo: "Reclamante",
     entidade: "cliente",
     tipo: "nome",
-    secao: "pessoais",
+    secao: "identificacao",
+    principal: true,
     obrigatorio: true,
     aliases: ["nome do cliente", "cliente", "nome"],
   },
   {
     chave: "adverso",
     cabecalho: "Adverso",
-    rotulo: "Parte adversa",
+    rotulo: "Adverso",
     entidade: "registro",
     tipo: "texto",
     secao: "processo",
@@ -109,20 +139,12 @@ export const CAMPOS_MODELO: CampoModelo[] = [
   {
     chave: "tipo_acao",
     cabecalho: "Tipo de Ação",
-    rotulo: "Tipo de ação ou serviço",
+    rotulo: "Tipo de Ação",
     entidade: "registro",
     tipo: "texto",
     secao: "processo",
+    principal: true,
     aliases: ["tipo acao", "tipo da acao"],
-  },
-  {
-    chave: "valor",
-    cabecalho: "Valor",
-    rotulo: "Valor informado",
-    entidade: "registro",
-    tipo: "moeda",
-    secao: "processo",
-    aliases: ["valor da causa"],
   },
   {
     chave: "celular",
@@ -130,29 +152,23 @@ export const CAMPOS_MODELO: CampoModelo[] = [
     rotulo: "Celular",
     entidade: "cliente",
     tipo: "telefone",
-    secao: "contatos",
+    secao: "contato",
+    principal: true,
   },
   {
-    chave: "comarca",
-    cabecalho: "Comarca",
-    rotulo: "Comarca (coluna G)",
-    entidade: "registro",
+    chave: "cidade",
+    cabecalho: "Cidade",
+    rotulo: "Cidade",
+    entidade: "cliente",
     tipo: "texto",
-    secao: "processo",
-  },
-  {
-    chave: "uf_comarca",
-    cabecalho: "UF Comarca",
-    rotulo: "UF da comarca",
-    entidade: "registro",
-    tipo: "uf",
-    secao: "processo",
-    aliases: ["uf da comarca", "uf"],
+    secao: "identificacao",
+    principal: true,
+    aliases: ["municipio"],
   },
   {
     chave: "distribuido_em",
     cabecalho: "Distribuído em",
-    rotulo: "Data de distribuição",
+    rotulo: "Distribuído em",
     entidade: "registro",
     tipo: "data",
     secao: "processo",
@@ -172,25 +188,156 @@ export const CAMPOS_MODELO: CampoModelo[] = [
     rotulo: "Captador",
     entidade: "registro",
     tipo: "texto",
-    secao: "captacao",
+    secao: "interno",
+    principal: true,
   },
   {
     chave: "captado_em",
     cabecalho: "Captado em",
-    rotulo: "Data e horário da captação",
+    rotulo: "Captado em",
     entidade: "registro",
     tipo: "datahora",
-    secao: "captacao",
+    secao: "interno",
     aliases: ["data da captacao", "captacao"],
   },
   {
-    chave: "valor_captacao",
-    cabecalho: "Valor Captação",
-    rotulo: "Valor da captação",
+    chave: "valor_estimado",
+    cabecalho: "Valor Estimado do Processo",
+    rotulo: "Valor Estimado do Processo",
     entidade: "registro",
     tipo: "moeda",
-    secao: "captacao",
-    aliases: ["valor da captacao"],
+    secao: "processo",
+    aliases: ["valor estimado", "valor estimado processo"],
+  },
+  {
+    chave: "data_inicio_contrato",
+    cabecalho: "Data inicio contrato",
+    rotulo: "Data início contrato",
+    entidade: "registro",
+    tipo: "data",
+    secao: "interno",
+    aliases: ["data de inicio do contrato", "data inicio do contrato", "inicio do contrato"],
+  },
+  {
+    chave: "situacao",
+    cabecalho: "Situação",
+    rotulo: "Situação",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "processo",
+    principal: true,
+  },
+  {
+    chave: "telefone_cliente",
+    cabecalho: "Telefone Cliente",
+    rotulo: "Telefone Cliente",
+    entidade: "cliente",
+    tipo: "telefone",
+    secao: "contato",
+    aliases: ["telefone do cliente"],
+  },
+  {
+    chave: "telefone_residencial",
+    cabecalho: "Telefone Residencial",
+    rotulo: "Telefone Residencial",
+    entidade: "cliente",
+    tipo: "telefone",
+    secao: "contato",
+  },
+  {
+    chave: "data_nascimento",
+    cabecalho: "Data de nascimento cliente",
+    rotulo: "Data de nascimento",
+    entidade: "cliente",
+    tipo: "data",
+    secao: "identificacao",
+    aliases: ["data de nascimento", "data de nascimento do cliente", "nascimento"],
+  },
+  {
+    chave: "email",
+    cabecalho: "E-mail",
+    rotulo: "E-mail",
+    entidade: "cliente",
+    tipo: "email",
+    secao: "contato",
+    principal: true,
+    aliases: ["email"],
+  },
+  {
+    chave: "cpf_cnpj",
+    cabecalho: "CPF",
+    rotulo: "CPF (coluna CPF)",
+    entidade: "cliente",
+    tipo: "documento",
+    secao: "identificacao",
+    aliases: ["cpf\\cnpj", "cpf cnpj", "cnpj", "cpf ou cnpj"],
+  },
+  {
+    chave: "indicacao",
+    cabecalho: "Indicação",
+    rotulo: "Indicação",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "interno",
+  },
+  {
+    chave: "cep",
+    cabecalho: "CEP",
+    rotulo: "CEP",
+    entidade: "cliente",
+    tipo: "cep",
+    secao: "identificacao",
+  },
+  {
+    chave: "cpf_reclamante",
+    cabecalho: "CPF Reclamante",
+    rotulo: "CPF",
+    entidade: "cliente",
+    tipo: "documento",
+    secao: "identificacao",
+    principal: true,
+    aliases: ["cpf do reclamante", "cpf cliente", "cpf do cliente"],
+  },
+  {
+    chave: "pasta",
+    cabecalho: "Pasta",
+    rotulo: "Pasta",
+    entidade: "registro",
+    tipo: "pasta",
+    secao: "interno",
+    principal: true,
+    aliases: ["codigo da pasta", "cod pasta"],
+  },
+
+  // ---- Legados (modelo anterior). Mantidos para exibir/editar dados já gravados.
+  {
+    chave: "valor",
+    cabecalho: "Valor",
+    rotulo: "Valor informado (modelo anterior)",
+    entidade: "registro",
+    tipo: "moeda",
+    secao: "processo",
+    legado: true,
+    aliases: ["valor da causa"],
+  },
+  {
+    chave: "comarca",
+    cabecalho: "Comarca",
+    rotulo: "Comarca",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "processo",
+    legado: true,
+  },
+  {
+    chave: "uf_comarca",
+    cabecalho: "UF Comarca",
+    rotulo: "UF da comarca",
+    entidade: "registro",
+    tipo: "uf",
+    secao: "processo",
+    legado: true,
+    aliases: ["uf da comarca", "uf"],
   },
   {
     chave: "juizo",
@@ -199,6 +346,44 @@ export const CAMPOS_MODELO: CampoModelo[] = [
     entidade: "registro",
     tipo: "texto",
     secao: "processo",
+    legado: true,
+  },
+  {
+    chave: "requisicao",
+    cabecalho: "Requisição",
+    rotulo: "Requisição",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "processo",
+    legado: true,
+  },
+  {
+    chave: "fase",
+    cabecalho: "Fase",
+    rotulo: "Fase",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "processo",
+    legado: true,
+  },
+  {
+    chave: "comarca_x",
+    cabecalho: "Comarca",
+    rotulo: "Comarca (2ª coluna)",
+    entidade: "registro",
+    tipo: "texto",
+    secao: "processo",
+    legado: true,
+  },
+  {
+    chave: "valor_captacao",
+    cabecalho: "Valor Captação",
+    rotulo: "Valor da captação",
+    entidade: "registro",
+    tipo: "moeda",
+    secao: "interno",
+    legado: true,
+    aliases: ["valor da captacao"],
   },
   {
     chave: "perc_honorario",
@@ -206,7 +391,8 @@ export const CAMPOS_MODELO: CampoModelo[] = [
     rotulo: "Percentual de honorários",
     entidade: "registro",
     tipo: "percentual",
-    secao: "captacao",
+    secao: "interno",
+    legado: true,
     aliases: [
       "honorario",
       "honorarios",
@@ -216,124 +402,18 @@ export const CAMPOS_MODELO: CampoModelo[] = [
     ],
   },
   {
-    chave: "requisicao",
-    cabecalho: "Requisição",
-    rotulo: "Requisição",
-    entidade: "registro",
-    tipo: "texto",
-    secao: "processo",
-  },
-  {
-    chave: "fase",
-    cabecalho: "Fase",
-    rotulo: "Fase",
-    entidade: "registro",
-    tipo: "texto",
-    secao: "processo",
-  },
-  {
-    chave: "situacao",
-    cabecalho: "Situação",
-    rotulo: "Situação",
-    entidade: "registro",
-    tipo: "texto",
-    secao: "processo",
-  },
-  {
-    chave: "telefone_cliente",
-    cabecalho: "Telefone Cliente",
-    rotulo: "Telefone do cliente",
-    entidade: "cliente",
-    tipo: "telefone",
-    secao: "contatos",
-    aliases: ["telefone do cliente"],
-  },
-  {
-    chave: "telefone_residencial",
-    cabecalho: "Telefone Residencial",
-    rotulo: "Telefone residencial",
-    entidade: "cliente",
-    tipo: "telefone",
-    secao: "contatos",
-  },
-  {
-    chave: "data_nascimento",
-    cabecalho: "Data de nascimento cliente",
-    rotulo: "Data de nascimento",
-    entidade: "cliente",
-    tipo: "data",
-    secao: "pessoais",
-    aliases: ["data de nascimento", "data de nascimento do cliente", "nascimento"],
-  },
-  {
-    chave: "email",
-    cabecalho: "E-mail",
-    rotulo: "E-mail",
-    entidade: "cliente",
-    tipo: "email",
-    secao: "contatos",
-    aliases: ["email"],
-  },
-  {
-    chave: "comarca_x",
-    cabecalho: "Comarca",
-    rotulo: "Comarca (coluna X)",
-    entidade: "registro",
-    tipo: "texto",
-    secao: "processo",
-  },
-  {
-    chave: "cpf_cnpj",
-    cabecalho: "CPF\\CNPJ",
-    rotulo: "CPF/CNPJ informado",
-    entidade: "cliente",
-    tipo: "documento",
-    secao: "pessoais",
-    aliases: ["cpf", "cnpj", "cpf ou cnpj"],
-  },
-  {
-    chave: "indicacao",
-    cabecalho: "Indicação",
-    rotulo: "Indicação",
-    entidade: "registro",
-    tipo: "texto",
-    secao: "captacao",
-  },
-  {
     chave: "salario",
     cabecalho: "Salário",
     rotulo: "Salário",
     entidade: "cliente",
     tipo: "moeda",
-    secao: "pessoais",
-  },
-  {
-    chave: "cep",
-    cabecalho: "CEP",
-    rotulo: "CEP",
-    entidade: "cliente",
-    tipo: "cep",
-    secao: "pessoais",
-  },
-  {
-    chave: "cpf_reclamante",
-    cabecalho: "CPF Reclamante",
-    rotulo: "CPF do reclamante",
-    entidade: "cliente",
-    tipo: "documento",
-    secao: "pessoais",
-    aliases: ["cpf do reclamante", "cpf cliente", "cpf do cliente"],
-  },
-  {
-    chave: "pasta",
-    cabecalho: "Pasta",
-    rotulo: "Código da pasta",
-    entidade: "registro",
-    tipo: "pasta",
-    secao: "processo",
-    aliases: ["codigo da pasta", "cod pasta"],
+    secao: "identificacao",
+    legado: true,
   },
 ];
+
+/** As 22 colunas do modelo oficial, na ordem da planilha. */
+export const CAMPOS_OFICIAIS: CampoModelo[] = CAMPOS_MODELO.filter((c) => !c.legado);
 
 export const CAMPO_POR_CHAVE = new Map(CAMPOS_MODELO.map((c) => [c.chave, c]));
 
@@ -341,44 +421,26 @@ export function campo(chave: ChaveCampo): CampoModelo {
   return CAMPO_POR_CHAVE.get(chave)!;
 }
 
-/** Ordem de exibição no perfil, por seção (todas as colunas do modelo). */
-export const SECOES_PERFIL: { secao: SecaoPerfil; titulo: string; campos: ChaveCampo[] }[] = [
-  {
-    secao: "pessoais",
-    titulo: "Dados pessoais",
-    campos: ["nome", "cpf_reclamante", "cpf_cnpj", "data_nascimento", "salario", "cep"],
-  },
-  {
-    secao: "contatos",
-    titulo: "Contatos",
-    campos: ["celular", "telefone_cliente", "telefone_residencial", "email"],
-  },
-  {
-    secao: "processo",
-    titulo: "Processo ou atendimento",
-    campos: [
-      "numero",
-      "adverso",
-      "tipo_acao",
-      "valor",
-      "comarca",
-      "uf_comarca",
-      "distribuido_em",
-      "categoria",
-      "juizo",
-      "requisicao",
-      "fase",
-      "situacao",
-      "comarca_x",
-      "pasta",
-    ],
-  },
-  {
-    secao: "captacao",
-    titulo: "Captação e honorários",
-    campos: ["captador", "captado_em", "valor_captacao", "indicacao", "perc_honorario"],
-  },
-];
+/** Blocos do perfil e a ordem dos campos em cada um (oficiais e, por último, legados). */
+export const BLOCOS_PERFIL: { secao: SecaoPerfil; titulo: string; campos: ChaveCampo[] }[] = (
+  [
+    ["identificacao", "Identificação do Cliente"],
+    ["contato", "Contato"],
+    ["processo", "Processo"],
+    ["interno", "Informações Internas"],
+  ] as const
+).map(([secao, titulo]) => ({
+  secao,
+  titulo,
+  campos: [
+    ...CAMPOS_MODELO.filter((c) => c.secao === secao && !c.legado),
+    ...CAMPOS_MODELO.filter((c) => c.secao === secao && c.legado),
+  ].map((c) => c.chave),
+}));
+
+export function blocoPerfil(secao: SecaoPerfil) {
+  return BLOCOS_PERFIL.find((b) => b.secao === secao)!;
+}
 
 /** Campos do cadastro guardados em `clientes.dados_rf` (nome e CPF têm colunas próprias). */
 export const CAMPOS_DADOS_CLIENTE: ChaveCampo[] = CAMPOS_MODELO.filter(
@@ -423,14 +485,14 @@ export interface MapeamentoColunas {
   extras: Map<number, string>;
   /** Cabeçalhos originais por índice (todas as colunas). */
   cabecalhos: string[];
-  /** Campos do modelo ausentes no arquivo (todos opcionais, exceto Reclamante). */
+  /** Campos do modelo OFICIAL ausentes no arquivo (todos opcionais, exceto Reclamante). */
   ausentes: ChaveCampo[];
 }
 
 /**
  * Reconhece as colunas pelo cabeçalho. Cada campo é usado uma única vez;
- * quando um cabeçalho se repete (ex.: duas "Comarca"), a próxima ocorrência
- * vai para o próximo campo compatível (Comarca G → Comarca X).
+ * quando um cabeçalho se repete (ex.: duas "Comarca" do modelo anterior), a
+ * próxima ocorrência vai para o próximo campo compatível.
  */
 export function mapearCabecalhos(cabecalhos: (string | null | undefined)[]): MapeamentoColunas {
   const campos = new Map<number, ChaveCampo>();
@@ -452,6 +514,6 @@ export function mapearCabecalhos(cabecalhos: (string | null | undefined)[]): Map
     }
   });
 
-  const ausentes = CAMPOS_MODELO.map((c) => c.chave).filter((c) => !usados.has(c));
+  const ausentes = CAMPOS_OFICIAIS.map((c) => c.chave).filter((c) => !usados.has(c));
   return { campos, extras, cabecalhos: originais, ausentes };
 }
