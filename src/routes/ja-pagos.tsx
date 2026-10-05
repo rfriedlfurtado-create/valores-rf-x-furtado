@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
@@ -38,6 +38,7 @@ import {
   useVinculosEscritorio,
 } from "@/lib/escritorio";
 import { formatDate } from "@/lib/format";
+import { propsLinhaClicavel } from "@/lib/linhaClicavel";
 import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -69,6 +70,13 @@ function JaPagos() {
   const identificadores = useIdentificadoresPorCliente();
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<OrdenacaoJaPagos>("pago_recente");
+  const navigate = useNavigate();
+  const abrir = (id: string) =>
+    void navigate({
+      to: "/clientes/$clienteId",
+      params: { clienteId: id },
+      search: { visao: "pagos" },
+    });
 
   const variacoesPorCliente = useMemo(() => {
     const mapa = new Map<string, string[]>();
@@ -183,7 +191,14 @@ function JaPagos() {
             </TableHeader>
             <TableBody>
               {lista.map((cliente) => (
-                <TableRow key={cliente.id}>
+                <TableRow
+                  key={cliente.id}
+                  {...propsLinhaClicavel({
+                    rotulo: `Abrir perfil de ${cliente.nome}`,
+                    abrir: () => abrir(cliente.id),
+                    href: `/clientes/${cliente.id}?visao=pagos`,
+                  })}
+                >
                   <TableCell className="font-semibold">
                     {cliente.nome}
                     <span className="mt-1 flex flex-wrap gap-1">
@@ -217,12 +232,14 @@ function JaPagos() {
                     <div
                       className="flex items-center justify-end gap-1"
                       onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
                       <Button asChild size="sm" variant="outline">
                         <Link
                           to="/clientes/$clienteId"
                           params={{ clienteId: cliente.id }}
                           search={{ visao: "pagos" }}
+                          tabIndex={-1}
                         >
                           Ver perfil
                         </Link>

@@ -36,6 +36,7 @@ import {
   useFiltroEscritorio,
   useVinculosEscritorio,
 } from "@/lib/escritorio";
+import { propsLinhaClicavel } from "@/lib/linhaClicavel";
 import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
 import type { ClienteComTotais } from "@/lib/tipos";
 
@@ -189,18 +190,11 @@ function Clientes() {
                 {visiveis.map((cliente) => (
                   <TableRow
                     key={cliente.id}
-                    role="link"
-                    tabIndex={0}
-                    aria-label={`Abrir perfil de ${cliente.nome}`}
-                    className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
-                    onClick={() => abrir(cliente.id)}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        abrir(cliente.id);
-                      }
-                    }}
+                    {...propsLinhaClicavel({
+                      rotulo: `Abrir perfil de ${cliente.nome}`,
+                      abrir: () => abrir(cliente.id),
+                      href: `/clientes/${cliente.id}?visao=clientes`,
+                    })}
                   >
                     <TableCell className="font-semibold">
                       {cliente.nome}
