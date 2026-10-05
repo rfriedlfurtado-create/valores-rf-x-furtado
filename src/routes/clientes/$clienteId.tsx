@@ -1008,6 +1008,11 @@ function BlocoValoresRecebidos({
 }) {
   const { registros } = perfil;
   const numeroSel = registro ? dadosDoRegistro(registro).numero || "Sem número" : null;
+  const alvoFrase = registro
+    ? "este processo"
+    : semProcesso
+      ? "os valores sem processo"
+      : "este cliente";
   const resumo = resumirEntradas(pagamentos);
   const semCategoria = resumo.porClassificacao.sem_classificacao;
   const registroPorId = new Map(registros.map((r) => [r.id, r]));
@@ -1022,7 +1027,7 @@ function BlocoValoresRecebidos({
       ? ["Nenhum valor recebido registrado."]
       : [
           `Total recebido: ${formatBRL(resumo.total)}`,
-          fraseQuantidadeEntradas(resumo.quantidade),
+          fraseQuantidadeEntradas(resumo.quantidade, alvoFrase),
           ...CATEGORIAS_OFICIAIS.filter((c) => resumo.porClassificacao[c].quantidade > 0).map(
             (c) => `${ROTULO_CLASSIFICACAO[c]}: ${formatBRL(resumo.porClassificacao[c].valor)}`,
           ),
@@ -1053,7 +1058,7 @@ function BlocoValoresRecebidos({
             </p>
             <p className="tabular text-lg font-bold text-money">{formatBRL(resumo.total)}</p>
             <p className="text-xs text-muted-foreground">
-              {fraseQuantidadeEntradas(resumo.quantidade)}
+              {fraseQuantidadeEntradas(resumo.quantidade, alvoFrase)}
             </p>
           </div>
           {CATEGORIAS_OFICIAIS.map((c) => (

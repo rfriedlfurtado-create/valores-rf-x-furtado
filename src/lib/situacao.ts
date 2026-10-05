@@ -190,10 +190,10 @@ export const ROTULO_GRUPO: Record<GrupoClassificacao, string> = {
 };
 
 /** Frase exibida no perfil: "Existem 3 valores registrados para este cliente." */
-export function fraseQuantidadeEntradas(quantidade: number): string {
-  if (quantidade === 0) return "Nenhum valor registrado para este cliente.";
-  if (quantidade === 1) return "Existe 1 valor registrado para este cliente.";
-  return `Existem ${quantidade} valores registrados para este cliente.`;
+export function fraseQuantidadeEntradas(quantidade: number, alvo = "este cliente"): string {
+  if (quantidade === 0) return `Nenhum valor registrado para ${alvo}.`;
+  if (quantidade === 1) return `Existe 1 valor registrado para ${alvo}.`;
+  return `Existem ${quantidade} valores registrados para ${alvo}.`;
 }
 
 export interface ResumoEntradas {
