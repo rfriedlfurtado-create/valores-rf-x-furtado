@@ -86,7 +86,7 @@ export interface NovoPagamento {
 }
 
 /**
- * Classifica UMA entrada financeira (Contratuais/Atrasados/Sucumbência).
+ * Classifica UMA entrada financeira (Contratual/Atrasados/Sucumbência).
  * Só muda a classificação daquela entrada: o valor nunca é duplicado nem
  * alterado, e as demais entradas do cliente não são tocadas.
  */

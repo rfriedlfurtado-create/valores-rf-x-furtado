@@ -24,6 +24,13 @@ import { Valor } from "@/components/Valor";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -53,10 +60,12 @@ import {
   valorInterpretado,
   valorParaEdicao,
 } from "@/lib/rf/valores";
+import { classificarEntrada } from "@/lib/acoes";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
+import { fraseQuantidadeEntradas, resumirEntradas } from "@/lib/situacao";
 import {
+  CLASSIFICACOES_ENTRADA,
   ROTULO_CLASSIFICACAO,
-  ROTULO_TIPO_PAGAMENTO,
   type ClassificacaoEntrada,
   type Pagamento,
 } from "@/lib/tipos";
@@ -214,7 +223,7 @@ function PerfilCliente() {
 
       <BlocoInterno key={`${cliente.id}-interno`} perfil={perfil} />
 
-      <BlocoEntradas key={`${cliente.id}-entradas`} perfil={perfil} />
+      <BlocoValoresRecebidos key={`${cliente.id}-valores`} perfil={perfil} />
 
       <OrigemEHistorico perfil={perfil} />
     </div>
@@ -466,30 +475,6 @@ function CampoEditavel({
 // ---------------------------------------------------------------------------
 // Processos e atendimentos
 // ---------------------------------------------------------------------------
-
-const GRUPOS_PAGAMENTO: {
-  chave: ClassificacaoEntrada | "outros_grupos" | "sem";
-  titulo: string;
-}[] = [
-  { chave: "contratuais", titulo: "Contratuais" },
-  { chave: "implantacao", titulo: "Implantação" },
-  { chave: "sucumbencia", titulo: "Sucumbência" },
-  { chave: "atrasados", titulo: "Atrasados" },
-  { chave: "outros_grupos", titulo: "Outras categorias" },
-  { chave: "sem", titulo: "Sem categoria" },
-];
-
-function grupoDoPagamento(p: Pagamento): (typeof GRUPOS_PAGAMENTO)[number]["chave"] {
-  if (!p.classificacao) return "sem";
-  if (
-    p.classificacao === "contratuais" ||
-    p.classificacao === "implantacao" ||
-    p.classificacao === "sucumbencia" ||
-    p.classificacao === "atrasados"
-  )
-    return p.classificacao;
-  return "outros_grupos";
-}
 
 /**
  * Conteúdo de um bloco: principais e secundárias preenchidas e, por último,
@@ -809,139 +794,168 @@ function BlocoInterno({ perfil }: { perfil: PerfilRF }) {
 }
 
 // ---------------------------------------------------------------------------
-// Entradas de valores (pagamentos efetivamente recebidos)
+// Valores recebidos (entradas individuais; nunca o Valor Estimado do Processo)
 // ---------------------------------------------------------------------------
 
-function BlocoEntradas({ perfil }: { perfil: PerfilRF }) {
+const CATEGORIAS_OFICIAIS: ClassificacaoEntrada[] = ["contratuais", "atrasados", "sucumbencia"];
+
+function origemDoPagamento(p: Pagamento): string {
+  const o = (p.dados_origem ?? {}) as { arquivo?: string; linha?: number };
+  if (p.importacao_id || p.chave_importacao)
+    return `Importação${o.arquivo ? ` · ${o.arquivo}` : ""}${
+      (o.linha ?? p.linha_importacao) ? `, linha ${o.linha ?? p.linha_importacao}` : ""
+    }`;
+  return p.usuario_cadastro ? `Lançamento manual · ${p.usuario_cadastro}` : "Lançamento manual";
+}
+
+function BlocoValoresRecebidos({ perfil }: { perfil: PerfilRF }) {
   const { pagamentos, registros } = perfil;
-  const total = pagamentos.reduce((s, p) => s + p.valor, 0);
-  const porGrupo = GRUPOS_PAGAMENTO.map((g) => {
-    const doGrupo = pagamentos.filter((p) => grupoDoPagamento(p) === g.chave);
-    return { ...g, qtd: doGrupo.length, soma: doGrupo.reduce((s, p) => s + p.valor, 0) };
-  }).filter((g) => g.qtd > 0);
-  const idsRegistros = new Set(registros.map((r) => r.id));
-  const semRegistro = pagamentos.filter(
-    (p) => !p.atendimento_id || !idsRegistros.has(p.atendimento_id),
+  const resumo = resumirEntradas(pagamentos);
+  const semCategoria = resumo.porClassificacao.sem_classificacao;
+  const registroPorId = new Map(registros.map((r) => [r.id, r]));
+  const ordenados = [...pagamentos].sort(
+    (a, b) =>
+      a.data_pagamento.localeCompare(b.data_pagamento) ||
+      (a.linha_importacao ?? 0) - (b.linha_importacao ?? 0),
   );
 
-  const resumo =
-    pagamentos.length === 0 ? (
-      <span>Nenhuma entrada de valor registrada.</span>
-    ) : (
-      <ResumoLinhas
-        itens={[
-          `${pagamentos.length} entrada(s) · Total ${formatBRL(total)}`,
-          porGrupo.map((g) => `${g.titulo}: ${formatBRL(g.soma)}`).join(" · "),
-        ]}
-      />
-    );
+  const linhasResumo =
+    pagamentos.length === 0
+      ? ["Nenhum valor recebido registrado."]
+      : [
+          `Total recebido: ${formatBRL(resumo.total)}`,
+          fraseQuantidadeEntradas(resumo.quantidade),
+          ...CATEGORIAS_OFICIAIS.filter((c) => resumo.porClassificacao[c].quantidade > 0).map(
+            (c) => `${ROTULO_CLASSIFICACAO[c]}: ${formatBRL(resumo.porClassificacao[c].valor)}`,
+          ),
+          ...(semCategoria.quantidade
+            ? [
+                `Sem categoria: ${formatBRL(semCategoria.valor)} (${semCategoria.quantidade} a classificar)`,
+              ]
+            : []),
+        ];
 
   return (
-    <BlocoExpansivel titulo="Entradas de valores" resumo={resumo}>
+    <BlocoExpansivel
+      titulo="Valores recebidos"
+      inicialAberto={semCategoria.quantidade > 0}
+      resumo={<ResumoLinhas itens={linhasResumo} />}
+    >
       <div className="space-y-4 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Total recebido
+            </p>
+            <p className="tabular text-lg font-bold text-money">{formatBRL(resumo.total)}</p>
+            <p className="text-xs text-muted-foreground">
+              {fraseQuantidadeEntradas(resumo.quantidade)}
+            </p>
+          </div>
+          {CATEGORIAS_OFICIAIS.map((c) => (
+            <div key={c} className="rounded-lg border border-border px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {ROTULO_CLASSIFICACAO[c]}
+              </p>
+              <p className="tabular text-base font-semibold">
+                {formatBRL(resumo.porClassificacao[c].valor)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {resumo.porClassificacao[c].quantidade} valor(es)
+              </p>
+            </div>
+          ))}
+        </div>
         <p className="text-xs text-muted-foreground">
-          Somente valores efetivamente recebidos. O “Valor Estimado do Processo” importado da
-          planilha é uma estimativa e não entra aqui.
+          Somente valores efetivamente recebidos, cada um com sua própria categoria. O “Valor
+          Estimado do Processo” é uma estimativa e não entra aqui.
         </p>
         {pagamentos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma entrada de valor registrada.</p>
-        ) : null}
-        {registros.map((r) => {
-          const doRegistro = pagamentos.filter((p) => p.atendimento_id === r.id);
-          if (doRegistro.length === 0) return null;
-          return (
-            <PagamentosDoRegistro
-              key={r.id}
-              pagamentos={doRegistro}
-              titulo={`Processo ${rotuloRegistro(r)}`}
-            />
-          );
-        })}
-        {semRegistro.length ? (
-          <Secao
-            titulo="Pagamentos sem processo vinculado"
-            descricao="Registrados para o cliente sem indicar o processo (ou com processo removido)."
-          >
-            <TabelaPagamentos pagamentos={semRegistro} />
-          </Secao>
-        ) : null}
+          <p className="text-sm text-muted-foreground">Nenhum valor recebido registrado.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Data</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="min-w-44">Tipo do valor</TableHead>
+                  <TableHead>Processo</TableHead>
+                  <TableHead>Origem</TableHead>
+                  <TableHead>Observação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ordenados.map((p) => {
+                  const reg = p.atendimento_id ? registroPorId.get(p.atendimento_id) : null;
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="tabular text-sm">
+                        {formatDate(p.data_pagamento)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Valor valor={p.valor} />
+                      </TableCell>
+                      <TableCell>
+                        <SeletorCategoria pagamento={p} />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {reg ? rotuloRegistro(reg) : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {origemDoPagamento(p)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {p.observacao || "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
     </BlocoExpansivel>
   );
 }
 
-function PagamentosDoRegistro({
-  pagamentos,
-  titulo = "Pagamentos deste registro",
-}: {
-  pagamentos: Pagamento[];
-  titulo?: string;
-}) {
+/** Categoria de UM valor: alterar só atualiza a entrada (nunca cria outra). */
+function SeletorCategoria({ pagamento }: { pagamento: Pagamento }) {
+  const sincronizar = useSincronizar();
+  const mutation = useMutation({
+    mutationFn: (c: ClassificacaoEntrada | null) => classificarEntrada(pagamento.id, c),
+    onSuccess: async () => {
+      await sincronizar(EVENTOS.ENTRADA_CLASSIFICADA);
+      toast.success("Categoria do valor atualizada.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const atual =
+    pagamento.classificacao && CATEGORIAS_OFICIAIS.includes(pagamento.classificacao)
+      ? pagamento.classificacao
+      : "nenhuma";
   return (
-    <Secao
-      titulo={titulo}
-      descricao="Somente valores efetivamente recebidos. O Valor Estimado do Processo e os demais valores da planilha não são pagamentos."
+    <Select
+      value={atual}
+      disabled={mutation.isPending}
+      onValueChange={(v) => mutation.mutate(v === "nenhuma" ? null : (v as ClassificacaoEntrada))}
     >
-      {pagamentos.length === 0 ? (
-        <div className="px-5 py-6 text-sm text-muted-foreground">
-          Nenhum pagamento registrado para este processo.
-        </div>
-      ) : (
-        <div className="space-y-4 px-5 py-4">
-          {pagamentos.length > 1 ? (
-            <div className="flex items-center gap-2 rounded-lg border border-info/30 bg-info-soft px-3 py-2 text-sm font-medium text-info">
-              <AlertTriangle className="size-4 shrink-0" aria-hidden />
-              Este benefício possui mais de um pagamento
-            </div>
-          ) : null}
-          {GRUPOS_PAGAMENTO.map((g) => {
-            const doGrupo = pagamentos.filter((p) => grupoDoPagamento(p) === g.chave);
-            if (doGrupo.length === 0) return null;
-            return (
-              <div key={g.chave}>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {g.titulo} ({doGrupo.length})
-                </p>
-                <TabelaPagamentos pagamentos={doGrupo} />
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Secao>
-  );
-}
-
-function TabelaPagamentos({ pagamentos }: { pagamentos: Pagamento[] }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Data</TableHead>
-            <TableHead className="text-right">Valor</TableHead>
-            <TableHead>Categoria</TableHead>
-            <TableHead>Forma</TableHead>
-            <TableHead>Observação</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {pagamentos.map((p) => (
-            <TableRow key={p.id}>
-              <TableCell className="tabular text-sm">{formatDate(p.data_pagamento)}</TableCell>
-              <TableCell className="text-right">
-                <Valor valor={p.valor} />
-              </TableCell>
-              <TableCell className="text-sm">
-                {p.classificacao ? ROTULO_CLASSIFICACAO[p.classificacao] : "Sem categoria"}
-              </TableCell>
-              <TableCell className="text-sm">{ROTULO_TIPO_PAGAMENTO[p.tipo] ?? p.tipo}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{p.observacao || "—"}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+      <SelectTrigger
+        className={cn("h-8", atual === "nenhuma" && "border-warning text-warning")}
+        aria-label={`Tipo do valor de ${formatBRL(pagamento.valor)}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="nenhuma">Sem categoria</SelectItem>
+        {CLASSIFICACOES_ENTRADA.map((c) => (
+          <SelectItem key={c.value} value={c.value}>
+            {c.label.toUpperCase()}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

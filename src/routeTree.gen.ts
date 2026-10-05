@@ -23,6 +23,7 @@ import { Route as ClientesIndexRouteImport } from './routes/clientes/index'
 import { Route as ClientesClienteIdRouteImport } from './routes/clientes/$clienteId'
 import { Route as ImportacoesLoteIdRouteImport } from './routes/importacoes_.$loteId'
 import { Route as ImportarFurtadoRouteImport } from './routes/importar_.furtado'
+import { Route as ImportarRecebimentosRouteImport } from './routes/importar_.recebimentos'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -94,6 +95,11 @@ const ImportarFurtadoRoute = ImportarFurtadoRouteImport.update({
   path: '/importar/furtado',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImportarRecebimentosRoute = ImportarRecebimentosRouteImport.update({
+  id: '/importar_/recebimentos',
+  path: '/importar/recebimentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
   '/importar/furtado': typeof ImportarFurtadoRoute
+  '/importar/recebimentos': typeof ImportarRecebimentosRoute
   '/clientes/': typeof ClientesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
   '/importar/furtado': typeof ImportarFurtadoRoute
+  '/importar/recebimentos': typeof ImportarRecebimentosRoute
   '/clientes': typeof ClientesIndexRoute
 }
 export interface FileRoutesById {
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes_/$loteId': typeof ImportacoesLoteIdRoute
   '/importar_/furtado': typeof ImportarFurtadoRoute
+  '/importar_/recebimentos': typeof ImportarRecebimentosRoute
   '/clientes/': typeof ClientesIndexRoute
 }
 export interface FileRouteTypes {
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/clientes/$clienteId'
     | '/importacoes/$loteId'
     | '/importar/furtado'
+    | '/importar/recebimentos'
     | '/clientes/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/clientes/$clienteId'
     | '/importacoes/$loteId'
     | '/importar/furtado'
+    | '/importar/recebimentos'
     | '/clientes'
   id:
     | '__root__'
@@ -192,6 +203,7 @@ export interface FileRouteTypes {
     | '/clientes/$clienteId'
     | '/importacoes_/$loteId'
     | '/importar_/furtado'
+    | '/importar_/recebimentos'
     | '/clientes/'
   fileRoutesById: FileRoutesById
 }
@@ -209,6 +221,7 @@ export interface RootRouteChildren {
   ClientesClienteIdRoute: typeof ClientesClienteIdRoute
   ImportacoesLoteIdRoute: typeof ImportacoesLoteIdRoute
   ImportarFurtadoRoute: typeof ImportarFurtadoRoute
+  ImportarRecebimentosRoute: typeof ImportarRecebimentosRoute
   ClientesIndexRoute: typeof ClientesIndexRoute
 }
 
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImportarFurtadoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/importar_/recebimentos': {
+      id: '/importar_/recebimentos'
+      path: '/importar/recebimentos'
+      fullPath: '/importar/recebimentos'
+      preLoaderRoute: typeof ImportarRecebimentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -329,6 +349,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientesClienteIdRoute: ClientesClienteIdRoute,
   ImportacoesLoteIdRoute: ImportacoesLoteIdRoute,
   ImportarFurtadoRoute: ImportarFurtadoRoute,
+  ImportarRecebimentosRoute: ImportarRecebimentosRoute,
   ClientesIndexRoute: ClientesIndexRoute,
 }
 export const routeTree = rootRouteImport

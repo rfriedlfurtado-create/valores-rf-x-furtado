@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
+import { BotaoImportarClientes } from "@/components/DialogImportar";
 import { Valor } from "@/components/Valor";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
 import { Input } from "@/components/ui/input";
@@ -120,7 +121,9 @@ function JaPagos() {
             ? ` · ${base.indicadores.pagosSemValor} sem valor informado`
             : ""
         }.`}
-      />
+      >
+        <BotaoImportarClientes />
+      </PageHeader>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
         <div className="relative">

@@ -30,37 +30,23 @@ export interface Cliente {
 }
 
 /**
- * Classificação de uma ENTRADA financeira (cada pagamento tem a sua).
- * Gravada em `pagamentos.classificacao` (constraint pagamentos_classificacao_check).
- * `null` = ainda não classificada.
+ * Categoria de um VALOR RECEBIDO (cada entrada tem a sua). Padrão único do
+ * sistema: CONTRATUAL, ATRASADOS e SUCUMBÊNCIA — não existem outras variações.
+ * Gravada em `pagamentos.classificacao` (constraint pagamentos_classificacao_check,
+ * migração 20261005120000_valores_recebidos.sql). `null` = ainda não classificada.
  */
-export type ClassificacaoEntrada =
-  | "contratuais"
-  | "atrasados"
-  | "sucumbencia"
-  | "implantacao"
-  | "execucao"
-  | "administrativos"
-  | "outros";
+export type ClassificacaoEntrada = "contratuais" | "atrasados" | "sucumbencia";
 
 export const CLASSIFICACOES_ENTRADA: { value: ClassificacaoEntrada; label: string }[] = [
-  { value: "contratuais", label: "Contratuais" },
+  { value: "contratuais", label: "Contratual" },
   { value: "atrasados", label: "Atrasados" },
   { value: "sucumbencia", label: "Sucumbência" },
-  { value: "implantacao", label: "Implantação" },
-  { value: "execucao", label: "Execução" },
-  { value: "administrativos", label: "Administrativos" },
-  { value: "outros", label: "Outros" },
 ];
 
 export const ROTULO_CLASSIFICACAO: Record<ClassificacaoEntrada, string> = {
-  contratuais: "Contratuais",
+  contratuais: "Contratual",
   atrasados: "Atrasados",
   sucumbencia: "Sucumbência",
-  implantacao: "Implantação",
-  execucao: "Execução",
-  administrativos: "Administrativos",
-  outros: "Outros",
 };
 
 /** Entrada financeira: um registro individual de valor vinculado ao cliente. */
@@ -81,6 +67,10 @@ export interface Pagamento {
   atendimento_id?: string | null;
   /** Escritório do recebimento (quando conhecido). */
   escritorio?: string | null;
+  /** Importação que registrou o valor (null = lançamento manual). */
+  importacao_id?: string | null;
+  /** Conteúdo original da linha importada (arquivo, linha, colunas). */
+  dados_origem?: Record<string, unknown> | null;
 }
 
 export interface VariacaoNome {

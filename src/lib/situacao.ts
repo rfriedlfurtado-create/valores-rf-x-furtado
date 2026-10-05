@@ -126,10 +126,6 @@ export const GRUPOS_CLASSIFICACAO: GrupoClassificacao[] = [
   "contratuais",
   "atrasados",
   "sucumbencia",
-  "implantacao",
-  "execucao",
-  "administrativos",
-  "outros",
   "sem_classificacao",
 ];
 
@@ -162,7 +158,10 @@ export function resumirEntradas(entradas: readonly EntradaMinima[]): ResumoEntra
   ) as ResumoEntradas["porClassificacao"];
   let total = 0;
   for (const e of entradas) {
-    const grupo = porClassificacao[e.classificacao ?? "sem_classificacao"];
+    // Valor fora das 3 categorias oficiais (dado antigo) conta como "sem classificação".
+    const grupo =
+      porClassificacao[(e.classificacao ?? "sem_classificacao") as GrupoClassificacao] ??
+      porClassificacao.sem_classificacao;
     grupo.quantidade += 1;
     grupo.valor = arredondar(grupo.valor + e.valor);
     total = arredondar(total + e.valor);
@@ -186,7 +185,7 @@ export interface Indicadores {
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
-  /** Valores por classificação (Contratuais/Atrasados/Sucumbência/sem). */
+  /** Valores por categoria (Contratual/Atrasados/Sucumbência/sem). */
   entradas: ResumoEntradas;
   /** Clientes com mais de uma entrada financeira. */
   clientesComVariasEntradas: number;

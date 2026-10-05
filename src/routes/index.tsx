@@ -304,10 +304,6 @@ const COR_GRUPO: Record<GrupoClassificacao, string> = {
   contratuais: "bg-info",
   atrasados: "bg-money",
   sucumbencia: "bg-warning",
-  implantacao: "bg-sky-500",
-  execucao: "bg-violet-500",
-  administrativos: "bg-teal-500",
-  outros: "bg-rose-400",
   sem_classificacao: "bg-muted-foreground/40",
 };
 
