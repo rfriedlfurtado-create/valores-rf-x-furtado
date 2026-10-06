@@ -558,11 +558,10 @@ function SecaoPerfilCliente({ perfil, badges }: { perfil: PerfilRF; badges: Reac
   const cpf = cpfUnificado(cliente);
   const salvarCliente = (campo: ChaveCampo) => (v: string | null) =>
     editarCampo({ entidade: "cliente", id: cliente.id, campo, valor: v });
-  const resumo = resumoDoBloco(CAMPOS_PERFIL_CLIENTE, valor);
 
   return (
     <Card className="gap-0 p-0">
-      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Perfil do cliente
@@ -573,8 +572,9 @@ function SecaoPerfilCliente({ perfil, badges }: { perfil: PerfilRF; badges: Reac
             valor={cliente.nome}
             obrigatorio
             salvar={salvarCliente("nome")}
+            depois={<div className="flex flex-wrap items-center gap-1">{badges}</div>}
           >
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               {cliente.nome}
             </h1>
           </EditorInline>
@@ -600,10 +600,6 @@ function SecaoPerfilCliente({ perfil, badges }: { perfil: PerfilRF; badges: Reac
             </p>
           </EditorInline>
           {cpf.divergente ? <AvisoCpfDivergente perfil={perfil} outro={cpf.outro!} /> : null}
-          <div className="mt-2 flex flex-wrap gap-1">{badges}</div>
-          {!aberto && resumo.length ? (
-            <p className="mt-2 text-sm text-muted-foreground">{resumo.join(" · ")}</p>
-          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -692,6 +688,7 @@ function EditorInline({
   salvar,
   obrigatorio,
   children,
+  depois,
 }: {
   chave: ChaveCampo;
   rotulo: string;
@@ -699,6 +696,8 @@ function EditorInline({
   salvar: (valor: string | null) => Promise<void>;
   obrigatorio?: boolean;
   children: ReactNode;
+  /** Conteúdo ao lado do lápis (ex.: tags ao lado do nome). */
+  depois?: ReactNode;
 }) {
   const sincronizar = useSincronizar();
   const [editando, setEditando] = useState(false);
@@ -761,7 +760,7 @@ function EditorInline({
       </form>
     );
   return (
-    <div className="group mt-1 flex flex-wrap items-center gap-1">
+    <div className="group mt-0.5 flex flex-wrap items-center gap-1">
       {children}
       <Button
         variant="ghost"
@@ -776,6 +775,7 @@ function EditorInline({
       >
         <Pencil className="size-3.5" aria-hidden />
       </Button>
+      {depois}
     </div>
   );
 }
