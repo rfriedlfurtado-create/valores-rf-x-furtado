@@ -105,6 +105,7 @@ export const TABELAS_OBSERVADAS = [
   "correspondencias",
   "cliente_escritorios",
   "atendimentos",
+  "processo_categorias",
   "beneficios",
   "lancamentos_financeiros",
   "requisicoes",

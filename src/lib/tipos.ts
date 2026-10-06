@@ -33,21 +33,22 @@ export interface Cliente {
 
 /**
  * Categoria de um VALOR RECEBIDO (cada entrada tem a sua). Padrão único do
- * sistema: CONTRATUAL, ATRASADOS e SUCUMBÊNCIA — não existem outras variações.
- * Gravada em `pagamentos.classificacao` (constraint pagamentos_classificacao_check,
- * migração 20261005120000_valores_recebidos.sql). `null` = ainda não classificada.
+ * sistema: ATRASADOS, IMPLANTAÇÃO e SUCUMBÊNCIA — não existem outras variações
+ * (a antiga CONTRATUAL passou a ser IMPLANTAÇÃO). Gravada em
+ * `pagamentos.classificacao` (migração 20261006120000_valores_recebidos_por_categoria.sql).
+ * `null` = ainda não classificada (fica para conferência).
  */
-export type ClassificacaoEntrada = "contratuais" | "atrasados" | "sucumbencia";
+export type ClassificacaoEntrada = "atrasados" | "implantacao" | "sucumbencia";
 
 export const CLASSIFICACOES_ENTRADA: { value: ClassificacaoEntrada; label: string }[] = [
-  { value: "contratuais", label: "Contratual" },
   { value: "atrasados", label: "Atrasados" },
+  { value: "implantacao", label: "Implantação" },
   { value: "sucumbencia", label: "Sucumbência" },
 ];
 
 export const ROTULO_CLASSIFICACAO: Record<ClassificacaoEntrada, string> = {
-  contratuais: "Contratual",
   atrasados: "Atrasados",
+  implantacao: "Implantação",
   sucumbencia: "Sucumbência",
 };
 

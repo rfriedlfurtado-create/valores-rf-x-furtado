@@ -11,6 +11,7 @@ import { db } from "./furtado/persistencia";
 import { chaveParRejeitado, normalizarNome, type LimiaresSimilaridade } from "./similarity";
 
 import type { ClassificacaoEntrada, Cliente, TipoPagamento } from "./tipos";
+import type { SituacaoProcessoBanco } from "./valoresProcesso";
 
 function erro(message: string): never {
   throw new Error(message);
@@ -98,12 +99,8 @@ export async function definirClientePago(clienteId: string, pago: boolean): Prom
 export async function vincularEntradaProcesso(
   entradaId: string,
   atendimentoId: string | null,
-): Promise<void> {
-  const { error } = await supabase
-    .from("pagamentos")
-    .update({ atendimento_id: atendimentoId } as never)
-    .eq("id", entradaId);
-  if (error) erro(error.message);
+): Promise<SituacaoProcessoBanco[]> {
+  return alterarRecebimento(entradaId, { atendimento_id: atendimentoId });
 }
 
 export interface NovoPagamento {
@@ -120,36 +117,94 @@ export interface NovoPagamento {
 }
 
 /**
- * Classifica UMA entrada financeira (Contratual/Atrasados/Sucumbência).
+ * Classifica UMA entrada financeira (Atrasados/Implantação/Sucumbência).
  * Só muda a classificação daquela entrada: o valor nunca é duplicado nem
  * alterado, e as demais entradas do cliente não são tocadas.
  */
 export async function classificarEntrada(
   entradaId: string,
   classificacao: ClassificacaoEntrada | null,
-): Promise<void> {
-  const { error } = await supabase.from("pagamentos").update({ classificacao }).eq("id", entradaId);
-  if (error) erro(error.message);
+): Promise<SituacaoProcessoBanco[]> {
+  return alterarRecebimento(entradaId, { classificacao });
 }
 
-export async function registrarPagamento(entrada: NovoPagamento): Promise<void> {
+function processosDoResultado(data: unknown): SituacaoProcessoBanco[] {
+  const lista = (data as { processos?: SituacaoProcessoBanco[] } | null)?.processos;
+  return Array.isArray(lista) ? lista : [];
+}
+
+/**
+ * Registra UM recebimento (sempre um registro novo — nada é substituído).
+ * A regra do banco recusa sucumbência em processo marcado "Não haverá".
+ */
+export async function registrarPagamento(entrada: NovoPagamento): Promise<SituacaoProcessoBanco[]> {
   if (!entrada.cliente_id) erro("Selecione um cliente.");
   if (!(entrada.valor > 0)) erro("Informe um valor maior que zero.");
   if (!entrada.data_pagamento) erro("Informe a data do pagamento.");
 
-  const { error } = await supabase.from("pagamentos").insert({
-    cliente_id: entrada.cliente_id,
-    valor: entrada.valor,
-    data_pagamento: entrada.data_pagamento,
-    tipo: entrada.tipo,
-    observacao: entrada.observacao?.trim() || null,
-    usuario_cadastro: entrada.usuario_cadastro?.trim() || "Sistema",
-    ...(entrada.atendimento_id ? { atendimento_id: entrada.atendimento_id } : {}),
-    ...(entrada.classificacao ? { classificacao: entrada.classificacao } : {}),
-  } as never);
+  const { data, error } = await db.rpc("registrar_recebimento", {
+    p_dados: {
+      cliente_id: entrada.cliente_id,
+      valor: entrada.valor,
+      data_pagamento: entrada.data_pagamento,
+      tipo: entrada.tipo,
+      observacao: entrada.observacao?.trim() || null,
+      usuario_cadastro: entrada.usuario_cadastro?.trim() || "Sistema",
+      atendimento_id: entrada.atendimento_id ?? null,
+      classificacao: entrada.classificacao ?? null,
+    },
+  });
   if (error) erro(error.message);
+  return processosDoResultado(data);
 }
 
+export interface AlteracaoRecebimento {
+  valor?: number;
+  data_pagamento?: string;
+  tipo?: TipoPagamento;
+  observacao?: string | null;
+  classificacao?: ClassificacaoEntrada | null;
+  atendimento_id?: string | null;
+}
+
+/**
+ * Edita UM recebimento. A alteração fica no histórico do cliente; se o
+ * processo estava finalizado e deixar de cumprir os requisitos, ele volta
+ * para pendente (a resposta informa o motivo).
+ */
+export async function alterarRecebimento(
+  id: string,
+  alteracao: AlteracaoRecebimento,
+): Promise<SituacaoProcessoBanco[]> {
+  const { data, error } = await db.rpc("alterar_recebimento", { p_id: id, p_dados: alteracao });
+  if (error) erro(error.message);
+  return processosDoResultado(data);
+}
+
+/** Exclui UM recebimento (o registro excluído fica guardado no histórico). */
+export async function excluirRecebimento(id: string): Promise<SituacaoProcessoBanco[]> {
+  const { data, error } = await db.rpc("excluir_recebimento", { p_id: id });
+  if (error) erro(error.message);
+  return processosDoResultado(data);
+}
+
+/**
+ * Situação de UMA categoria de UM processo: total a receber, confirmação do
+ * recebimento integral e (só sucumbência) "Não haverá sucumbência".
+ */
+export async function definirCategoriaProcesso(
+  atendimentoId: string,
+  categoria: ClassificacaoEntrada,
+  dados: { total_previsto?: number | null; integral_confirmado?: boolean; nao_havera?: boolean },
+): Promise<SituacaoProcessoBanco[]> {
+  const { data, error } = await db.rpc("definir_categoria_processo", {
+    p_atendimento: atendimentoId,
+    p_categoria: categoria,
+    p_dados: dados,
+  });
+  if (error) erro(error.message);
+  return processosDoResultado(data);
+}
 export async function adicionarVariacao(clienteId: string, nome: string): Promise<void> {
   const normalizado = normalizarNome(nome);
   if (!normalizado) return;

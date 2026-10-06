@@ -26,6 +26,7 @@ import { registrarPagamento } from "@/lib/acoes";
 import { parseBRL, todayISO } from "@/lib/format";
 import {
   CLASSIFICACOES_ENTRADA,
+  ROTULO_CLASSIFICACAO,
   TIPOS_PAGAMENTO,
   type ClassificacaoEntrada,
   type ClienteComTotais,
@@ -40,6 +41,10 @@ export interface DialogPagamentoProps {
   registro?: { id: string; rotulo: string } | undefined;
   /** Lista para seleção quando não há cliente fixo. */
   clientes?: ClienteComTotais[];
+  /** Categoria já escolhida ao abrir (ex.: botão "Registrar" de um card). */
+  categoriaInicial?: ClassificacaoEntrada | undefined;
+  /** Categorias que não aceitam recebimento (ex.: sucumbência com "Não haverá"). */
+  categoriasBloqueadas?: Partial<Record<ClassificacaoEntrada, string>> | undefined;
   trigger: ReactNode;
 }
 
@@ -47,6 +52,8 @@ export function DialogPagamento({
   clienteFixo,
   registro,
   clientes = [],
+  categoriaInicial,
+  categoriasBloqueadas,
   trigger,
 }: DialogPagamentoProps) {
   const [aberto, setAberto] = useState(false);
@@ -56,12 +63,23 @@ export function DialogPagamento({
   const [tipo, setTipo] = useState<TipoPagamento>("pix");
   const [observacao, setObservacao] = useState("");
   const [usuario, setUsuario] = useState("");
-  const [classificacao, setClassificacao] = useState<ClassificacaoEntrada | "nenhuma">("nenhuma");
+  const [classificacao, setClassificacao] = useState<ClassificacaoEntrada | "nenhuma">(
+    categoriaInicial ?? "nenhuma",
+  );
+  // No processo, a categoria é obrigatória: é ela que define o card atualizado.
+  const exigeCategoria = Boolean(registro);
 
   const sincronizar = useSincronizar();
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (exigeCategoria && classificacao === "nenhuma")
+        throw new Error(
+          "Escolha a categoria do recebimento: Atrasados, Implantação ou Sucumbência.",
+        );
+      const bloqueio =
+        classificacao !== "nenhuma" ? categoriasBloqueadas?.[classificacao] : undefined;
+      if (bloqueio) throw new Error(bloqueio);
       await registrarPagamento({
         cliente_id: clienteFixo?.id ?? clienteId,
         valor: parseBRL(valor),
@@ -75,7 +93,11 @@ export function DialogPagamento({
     },
     onSuccess: async () => {
       await sincronizar(EVENTOS.PAGAMENTO_REGISTRADO);
-      toast.success("Pagamento registrado com sucesso.");
+      toast.success(
+        classificacao !== "nenhuma"
+          ? `Recebimento registrado em ${ROTULO_CLASSIFICACAO[classificacao]}.`
+          : "Recebimento registrado com sucesso.",
+      );
       setAberto(false);
       setValor("");
       setObservacao("");
@@ -85,11 +107,17 @@ export function DialogPagamento({
   });
 
   return (
-    <Dialog open={aberto} onOpenChange={setAberto}>
+    <Dialog
+      open={aberto}
+      onOpenChange={(v) => {
+        setAberto(v);
+        if (v) setClassificacao(categoriaInicial ?? "nenhuma");
+      }}
+    >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Registrar pagamento</DialogTitle>
+          <DialogTitle>Registrar recebimento</DialogTitle>
           <DialogDescription>
             O histórico é sempre acumulado — nenhum registro anterior é substituído.
           </DialogDescription>
@@ -135,7 +163,7 @@ export function DialogPagamento({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="pagamento-data">Data do pagamento</Label>
+              <Label htmlFor="pagamento-data">Data do recebimento</Label>
               <Input
                 id="pagamento-data"
                 type="date"
@@ -166,23 +194,31 @@ export function DialogPagamento({
 
           {registro ? (
             <div className="grid gap-2">
-              <Label htmlFor="pagamento-classificacao">Categoria do pagamento</Label>
+              <Label htmlFor="pagamento-classificacao">Categoria do recebimento</Label>
               <Select
-                value={classificacao}
+                value={exigeCategoria && classificacao === "nenhuma" ? "" : classificacao}
                 onValueChange={(v) => setClassificacao(v as ClassificacaoEntrada | "nenhuma")}
               >
                 <SelectTrigger id="pagamento-classificacao">
-                  <SelectValue />
+                  <SelectValue placeholder="Escolha a categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="nenhuma">Sem categoria</SelectItem>
+                  {exigeCategoria ? null : <SelectItem value="nenhuma">Sem categoria</SelectItem>}
                   {CLASSIFICACOES_ENTRADA.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
+                    <SelectItem
+                      key={item.value}
+                      value={item.value}
+                      disabled={Boolean(categoriasBloqueadas?.[item.value])}
+                    >
                       {item.label}
+                      {categoriasBloqueadas?.[item.value] ? " (não haverá)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                O valor entra no card da categoria escolhida, somente deste processo.
+              </p>
             </div>
           ) : null}
 
@@ -212,7 +248,7 @@ export function DialogPagamento({
             Cancelar
           </Button>
           <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Registrando..." : "Registrar pagamento"}
+            {mutation.isPending ? "Registrando..." : "Registrar recebimento"}
           </Button>
         </DialogFooter>
       </DialogContent>

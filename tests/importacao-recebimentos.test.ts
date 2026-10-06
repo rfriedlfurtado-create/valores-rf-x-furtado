@@ -20,6 +20,7 @@ import {
 import {
   ARQUIVO_MODELO_RECEBIMENTOS,
   categoriaDoTexto,
+  situacaoDoTexto,
   lerPlanilhaRecebimentos,
 } from "@/lib/recebimentos/modelo";
 import { mapearCabecalhos } from "@/lib/rf/campos";
@@ -51,18 +52,23 @@ const CLIENTES: ClienteBase[] = [
 const indice = indexarClientes(CLIENTES, [{ cliente_id: "joao", nome_variacao: "Joao S." }]);
 
 describe("categorias padronizadas", () => {
-  test("somente CONTRATUAL, ATRASADOS e SUCUMBÊNCIA", () => {
+  test("somente ATRASADOS, IMPLANTAÇÃO e SUCUMBÊNCIA", () => {
     expect(CLASSIFICACOES_ENTRADA.map((c) => c.value)).toEqual([
-      "contratuais",
       "atrasados",
+      "implantacao",
       "sucumbencia",
     ]);
-    expect(Object.values(ROTULO_CLASSIFICACAO)).toEqual(["Contratual", "Atrasados", "Sucumbência"]);
+    expect(Object.values(ROTULO_CLASSIFICACAO)).toEqual([
+      "Atrasados",
+      "Implantação",
+      "Sucumbência",
+    ]);
   });
 
   test("texto livre da planilha vira a categoria oficial", () => {
-    expect(categoriaDoTexto("CONTRATUAL")).toBe("contratuais");
-    expect(categoriaDoTexto("Honorários contratuais")).toBe("contratuais");
+    expect(categoriaDoTexto("CONTRATUAL")).toBe("implantacao");
+    expect(categoriaDoTexto("Honorários contratuais")).toBe("implantacao");
+    expect(categoriaDoTexto("Implantação")).toBe("implantacao");
     expect(categoriaDoTexto("atrasados")).toBe("atrasados");
     expect(categoriaDoTexto("Sucumbência")).toBe("sucumbencia");
     expect(categoriaDoTexto("sucumbencia")).toBe("sucumbencia");
@@ -72,15 +78,15 @@ describe("categorias padronizadas", () => {
 
   test("resumo por categoria; valor antigo fora do padrão conta como sem categoria", () => {
     const r = resumirEntradas([
-      { valor: 1000, classificacao: "contratuais" },
+      { valor: 1000, classificacao: "implantacao" },
       { valor: 4500, classificacao: "atrasados" },
       { valor: 800, classificacao: "sucumbencia" },
-      { valor: 50, classificacao: "implantacao" as never },
+      { valor: 50, classificacao: "contratuais" as never },
       { valor: 10, classificacao: null },
     ]);
     expect(r.total).toBe(6360);
     expect(r.quantidade).toBe(5);
-    expect(r.porClassificacao.contratuais.valor).toBe(1000);
+    expect(r.porClassificacao.implantacao.valor).toBe(1000);
     expect(r.porClassificacao.sem_classificacao).toEqual({ quantidade: 2, valor: 60 });
   });
 });
@@ -100,7 +106,7 @@ describe("leitura da planilha de valores recebidos", () => {
     const comValor = p.linhas.filter((l) => l.entradas.length);
     expect(comValor.map((l) => l.entradas[0]!.valor)).toEqual([1000, 4500, 800]);
     expect(comValor.map((l) => l.entradas[0]!.classificacao)).toEqual([
-      "contratuais",
+      "implantacao",
       "atrasados",
       "sucumbencia",
     ]);
@@ -123,7 +129,7 @@ describe("leitura da planilha de valores recebidos", () => {
     const l = p.linhas[0]!;
     expect(l.cpf_valido).toBe(true);
     expect(l.entradas.map((e) => [e.valor, e.classificacao])).toEqual([
-      [2000, "contratuais"],
+      [2000, "implantacao"],
       [5000, "atrasados"],
       [1500, "sucumbencia"],
     ]);
@@ -137,7 +143,9 @@ describe("leitura da planilha de valores recebidos", () => {
       ]),
     );
     expect(p.linhas[0]!.entradas[0]!.classificacao).toBeNull();
-    expect(p.linhas[0]!.avisos.length).toBe(1);
+    // Aviso da categoria não reconhecida + valor sem categoria para conferência.
+    expect(p.linhas[0]!.avisos.length).toBe(2);
+    expect(p.linhas[0]!.avisos[1]).toContain("conferência");
   });
 
   test("só o Reclamante é obrigatório: planilha sem coluna de valor é aceita", () => {
@@ -397,5 +405,64 @@ describe("processo da linha (pagamento por processo)", () => {
     ).toBe("a");
     // escolha de processo de outro cliente é ignorada
     expect(processoDoItem(linha(), "joao", processos, new Map([[2, "u"]]))).toBeNull();
+  });
+});
+
+describe("importação: somente recebimento efetivo, total a receber e integral", () => {
+  test("Situação de valor previsto/pendente/cobrança não é importada como recebido", () => {
+    const p = lerPlanilhaRecebimentos(
+      planilha([
+        ["Reclamante", "Valor", "Categoria", "Situação"],
+        ["Ana", 1000, "Atrasados", "Recebido"],
+        ["Bia", 2000, "Atrasados", "Previsto"],
+        ["Caio", 300, "Sucumbência", "Pendente de pagamento"],
+        ["Davi", 400, "Implantação", "Cálculo de honorários"],
+        ["Eva", 500, "Implantação", "Cobrança enviada"],
+        ["Fabi", 600, "Implantação", "A receber"],
+      ]),
+    );
+    expect(p.linhas.map((l) => l.reclamante)).toEqual(["Ana"]);
+    expect(p.pendentes.map((x) => x.linha)).toEqual([3, 4, 5, 6, 7]);
+    expect(p.pendentes[0]!.motivo).toContain("não é recebimento efetivo");
+  });
+
+  test("situação do texto", () => {
+    expect(situacaoDoTexto("Recebido")).toBe("recebido");
+    expect(situacaoDoTexto("Pago")).toBe("recebido");
+    expect(situacaoDoTexto("Recebido parcialmente")).toBe("parcial");
+    expect(situacaoDoTexto("Quitado")).toBe("integral");
+    expect(situacaoDoTexto("Recebido integral")).toBe("integral");
+    expect(situacaoDoTexto("Não recebido")).toBe("nao_recebido");
+    expect(situacaoDoTexto("Valor previsto")).toBe("nao_recebido");
+    expect(situacaoDoTexto("")).toBeNull();
+  });
+
+  test("Total a receber e Recebimento integral vão para o card da categoria da linha", () => {
+    const p = lerPlanilhaRecebimentos(
+      planilha([
+        ["Reclamante", "Valor", "Categoria", "Total a receber", "Recebimento integral"],
+        ["Ana", 1000, "Atrasados", 3000, "Não"],
+        ["Bia", 500, "Implantação", null, "Sim"],
+        ["Caio", 500, null, 900, null],
+      ]),
+    );
+    const [a, b, c] = p.linhas;
+    expect([a!.total_previsto, a!.integral]).toEqual([3000, false]);
+    expect([b!.total_previsto, b!.integral]).toEqual([null, true]);
+    // Sem categoria: o total não é aplicado (não dá para saber o card) e fica para conferência.
+    expect(c!.total_previsto).toBeNull();
+    expect(c!.avisos.join(" ")).toContain("Total a receber ignorado");
+  });
+
+  test("Valor previsto/Valor a receber nunca é lido como valor recebido", () => {
+    const p = lerPlanilhaRecebimentos(
+      planilha([
+        ["Reclamante", "Atrasados", "Valor a receber"],
+        ["Ana", 1000, 5000],
+      ]),
+    );
+    const l = p.linhas[0]!;
+    expect(l.entradas.map((e) => e.valor)).toEqual([1000]);
+    expect(l.total_previsto).toBe(5000);
   });
 });

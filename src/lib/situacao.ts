@@ -181,8 +181,8 @@ export interface EntradaMinima {
 export type GrupoClassificacao = ClassificacaoEntrada | "sem_classificacao";
 
 export const GRUPOS_CLASSIFICACAO: GrupoClassificacao[] = [
-  "contratuais",
   "atrasados",
+  "implantacao",
   "sucumbencia",
   "sem_classificacao",
 ];
@@ -248,7 +248,7 @@ export interface Indicadores {
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
-  /** Valores por categoria (Contratual/Atrasados/Sucumbência/sem). */
+  /** Valores por categoria (Atrasados/Implantação/Sucumbência/sem). */
   entradas: ResumoEntradas;
   /** Clientes com mais de uma entrada financeira. */
   clientesComVariasEntradas: number;

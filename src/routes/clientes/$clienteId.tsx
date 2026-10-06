@@ -21,6 +21,7 @@ import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogPagamento } from "@/components/DialogPagamento";
+import { ValoresRecebidosProcesso } from "@/components/ValoresRecebidosProcesso";
 import { SecaoVazia } from "@/components/layout/AppShell";
 import { Valor } from "@/components/Valor";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ import {
   type Pagamento,
 } from "@/lib/tipos";
 import { cn } from "@/lib/utils";
+import { valoresDoProcesso } from "@/lib/valoresProcesso";
 
 export const Route = createFileRoute("/clientes/$clienteId")({
   validateSearch: (
@@ -246,13 +248,17 @@ function PerfilCliente() {
         <BlocoInterno key={`${registroAtual.id}-interno`} registro={registroAtual} />
       ) : null}
 
-      <BlocoValoresRecebidos
-        key={`${cliente.id}-${selecionado ?? "todos"}-valores`}
-        perfil={perfil}
-        pagamentos={pagamentosSelecionados}
-        registro={registroAtual}
-        semProcesso={selecionado === SEM_PROCESSO}
-      />
+      {/* Processo selecionado: os valores ficam nos cards VALORES RECEBIDOS acima.
+          Aqui só os valores sem processo (ou de cliente sem processo). */}
+      {!registroAtual ? (
+        <BlocoValoresRecebidos
+          key={`${cliente.id}-${selecionado ?? "todos"}-valores`}
+          perfil={perfil}
+          pagamentos={pagamentosSelecionados}
+          registro={registroAtual}
+          semProcesso={selecionado === SEM_PROCESSO}
+        />
+      ) : null}
 
       <BlocoCliente key={`${cliente.id}-contato`} perfil={perfil} secao="contato" />
 
@@ -1006,12 +1012,20 @@ function SecaoProcessos({
       ) : null}
 
       {registro ? (
-        <ProcessoSelecionado
-          key={registro.id}
-          perfil={perfil}
-          registro={registro}
-          linhas={linhas.get(registro.id) ?? []}
-        />
+        <>
+          <ProcessoSelecionado
+            key={registro.id}
+            perfil={perfil}
+            registro={registro}
+            linhas={linhas.get(registro.id) ?? []}
+          />
+          {/* VALORES RECEBIDOS: somente do processo selecionado (atualiza ao trocar). */}
+          <ValoresRecebidosProcesso
+            key={`${registro.id}-valores`}
+            perfil={perfil}
+            registro={registro}
+          />
+        </>
       ) : selecionado === SEM_PROCESSO ? (
         <p className="px-5 py-4 text-sm text-muted-foreground">
           Valores recebidos que ainda não pertencem a nenhum processo. Eles não entram nos totais de
@@ -1038,8 +1052,16 @@ function ProcessoSelecionado({
   // Recolhido por padrão: só o cabeçalho (número, situação e ações) fica visível.
   const [aberto, setAberto] = useState(false);
   const idConteudo = useId();
+  const valores = valoresDoProcesso(perfil.pagamentos, perfil.categorias, r.id);
   const mutacao = useMutation({
-    mutationFn: (pago: boolean) => definirProcessoPago(r.id, pago),
+    mutationFn: async (pago: boolean) => {
+      // Mesma regra do banco (que também bloqueia): avisa antes, com o que falta.
+      if (pago && !valores.podeFinalizar)
+        throw new Error(
+          `Não é possível marcar como PAGO / FINALIZADO — TODOS OS VALORES RECEBIDOS. Falta: ${valores.pendencias.join("; ")}.`,
+        );
+      await definirProcessoPago(r.id, pago);
+    },
     onSuccess: async (_, pago) => {
       await sincronizar(EVENTOS.CLIENTE_MARCADO_COMO_PAGO);
       toast.success(
@@ -1048,7 +1070,7 @@ function ProcessoSelecionado({
           : `Processo ${d.numero || "sem número"} voltou para CLIENTES.`,
       );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message, { duration: 12_000 }),
   });
 
   return (
@@ -1099,6 +1121,14 @@ function ProcessoSelecionado({
           <DialogPagamento
             clienteFixo={perfil.cliente}
             registro={{ id: r.id, rotulo: rotuloRegistro(r) }}
+            categoriasBloqueadas={
+              valores.categorias.sucumbencia.naoHavera
+                ? {
+                    sucumbencia:
+                      "Este processo está marcado “Não haverá sucumbência”. Desfaça a indicação no card Sucumbência antes de registrar um recebimento de sucumbência.",
+                  }
+                : undefined
+            }
             trigger={
               <Button variant="outline" size="sm">
                 <Plus className="size-4" aria-hidden />
@@ -1108,8 +1138,15 @@ function ProcessoSelecionado({
           />
           <Button
             size="sm"
-            variant={r.pago ? "outline" : "default"}
-            className={cn(!r.pago && "bg-success text-white hover:bg-success/90")}
+            variant={r.pago || !valores.podeFinalizar ? "outline" : "default"}
+            className={cn(
+              !r.pago && valores.podeFinalizar && "bg-success text-white hover:bg-success/90",
+            )}
+            title={
+              !r.pago && !valores.podeFinalizar
+                ? `Falta: ${valores.pendencias.join("; ")}`
+                : undefined
+            }
             disabled={mutacao.isPending}
             onClick={() => mutacao.mutate(!r.pago)}
           >
@@ -1215,7 +1252,7 @@ function BlocoInterno({ registro: r }: { registro: RegistroRF }) {
 // Valores recebidos (entradas individuais; nunca o Valor Estimado do Processo)
 // ---------------------------------------------------------------------------
 
-const CATEGORIAS_OFICIAIS: ClassificacaoEntrada[] = ["contratuais", "atrasados", "sucumbencia"];
+const CATEGORIAS_OFICIAIS: ClassificacaoEntrada[] = ["atrasados", "implantacao", "sucumbencia"];
 
 function origemDoPagamento(p: Pagamento): string {
   const o = (p.dados_origem ?? {}) as { arquivo?: string; linha?: number };

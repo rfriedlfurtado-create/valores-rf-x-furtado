@@ -9,12 +9,16 @@
  * Colunas reconhecidas pelo cabeçalho (sem depender da posição):
  *   Reclamante (ÚNICA obrigatória) · CPF · Valor · Categoria/Tipo · Data ·
  *   Número do processo · Pasta · Observação
- * e também colunas por categoria — "Contratual", "Atrasados",
- * "Sucumbência" — em que cada célula com valor vira um recebimento próprio.
+ * e também colunas por categoria — "Atrasados", "Implantação" (aceita
+ * também "Contratual") e "Sucumbência" — em que cada célula com valor vira um
+ * recebimento próprio, no card da categoria do processo.
  *
- * Valor é OPCIONAL: linha só com o Reclamante identifica o cliente e o move
- * para JÁ PAGOS sem lançar valor; os valores podem ser lançados depois,
- * manualmente, no perfil do cliente.
+ * Opcionais: "Situação" (recebido / parcial / integral / previsto…),
+ * "Total a receber" (saldo do card) e "Recebimento integral" (Sim/Não).
+ * Só é importado como recebido o que é recebimento efetivo: linha com
+ * Situação de valor previsto, pendente, a receber, cálculo ou cobrança fica
+ * de fora (pendência da prévia). Valor é OPCIONAL: linha só com o Reclamante
+ * identifica o cliente sem lançar valor (os valores vão depois no perfil).
  */
 
 import * as XLSX from "xlsx";
@@ -40,8 +44,11 @@ export type CampoRecebimento =
   | "numero"
   | "pasta"
   | "observacao"
-  | "valor_contratuais"
+  | "situacao"
+  | "total_previsto"
+  | "integral"
   | "valor_atrasados"
+  | "valor_implantacao"
   | "valor_sucumbencia";
 
 export interface DefinicaoCampo {
@@ -120,14 +127,51 @@ export const CAMPOS_RECEBIMENTO: DefinicaoCampo[] = [
     cabecalhos: ["Observação", "Observações", "Obs", "Descrição", "Histórico"],
   },
   {
-    campo: "valor_contratuais",
-    rotulo: "Valor Contratual",
-    cabecalhos: ["Contratual", "Contratuais", "Honorários contratuais", "Valor contratual"],
+    campo: "situacao",
+    rotulo: "Situação",
+    cabecalhos: [
+      "Situação",
+      "Status",
+      "Situação do valor",
+      "Situação do recebimento",
+      "Status do recebimento",
+    ],
+  },
+  {
+    campo: "total_previsto",
+    rotulo: "Total a receber",
+    cabecalhos: [
+      "Total a receber",
+      "Valor total a receber",
+      "Valor total",
+      "Total previsto",
+      "Valor previsto",
+      "Valor a receber",
+    ],
+  },
+  {
+    campo: "integral",
+    rotulo: "Recebimento integral",
+    cabecalhos: ["Recebimento integral", "Integral", "Recebido integralmente", "Quitado"],
   },
   {
     campo: "valor_atrasados",
     rotulo: "Valor Atrasados",
     cabecalhos: ["Atrasados", "Atrasado", "Valor atrasados", "Valores atrasados"],
+  },
+  {
+    campo: "valor_implantacao",
+    rotulo: "Valor Implantação",
+    cabecalhos: [
+      "Implantação",
+      "Implantacao",
+      "Valor implantação",
+      "Honorários de implantação",
+      "Contratual",
+      "Contratuais",
+      "Honorários contratuais",
+      "Valor contratual",
+    ],
   },
   {
     campo: "valor_sucumbencia",
@@ -143,8 +187,8 @@ export const CAMPOS_RECEBIMENTO: DefinicaoCampo[] = [
 ];
 
 const CATEGORIA_DA_COLUNA: Partial<Record<CampoRecebimento, ClassificacaoEntrada>> = {
-  valor_contratuais: "contratuais",
   valor_atrasados: "atrasados",
+  valor_implantacao: "implantacao",
   valor_sucumbencia: "sucumbencia",
 };
 
@@ -166,9 +210,41 @@ export function campoDoCabecalho(cabecalho: string): CampoRecebimento | null {
 export function categoriaDoTexto(texto: string | null | undefined): ClassificacaoEntrada | null {
   const t = normalizarTexto(texto ?? "");
   if (!t) return null;
-  if (t.includes("contrat")) return "contratuais";
+  if (t.includes("implant") || t.includes("contrat")) return "implantacao";
   if (t.includes("atrasad") || t.includes("retroativ")) return "atrasados";
   if (t.includes("sucumb")) return "sucumbencia";
+  return null;
+}
+
+/**
+ * Coluna "Situação": indica se o valor é recebimento efetivo.
+ * - "nao_recebido": previsto, pendente, a receber, cálculo, cobrança… (NÃO importa)
+ * - "integral" / "parcial" / "recebido": recebimento efetivo
+ * - null: vazio ou não reconhecido (tratado como recebido, com aviso se não reconhecido)
+ */
+export type SituacaoRecebimento = "nao_recebido" | "integral" | "parcial" | "recebido";
+
+export function situacaoDoTexto(texto: string | null | undefined): SituacaoRecebimento | null {
+  const t = normalizarTexto(texto ?? "");
+  if (!t) return null;
+  if (
+    /\b(nao recebid|nao pag|previst|pendent|a receber|aguard|cobranc|cobrar|calcul|estimad|em aberto|aberto|futur|projet)/.test(
+      t,
+    )
+  )
+    return "nao_recebido";
+  if (/\b(parcial|parcela)/.test(t)) return "parcial";
+  if (/\b(integral|quitad|total|liquidad)/.test(t)) return "integral";
+  if (/\b(recebid|pag|creditad|depositad|ok|sim)/.test(t)) return "recebido";
+  return null;
+}
+
+/** Coluna "Recebimento integral": Sim/Não (null = não informado). */
+export function simNao(texto: string | null | undefined): boolean | null {
+  const t = normalizarTexto(texto ?? "");
+  if (!t) return null;
+  if (/^(s|sim|x|ok|integral|quitado|true|1)$/.test(t)) return true;
+  if (/^(n|nao|parcial|false|0)$/.test(t)) return false;
   return null;
 }
 
@@ -201,6 +277,10 @@ export interface LinhaRecebimento {
   observacao: string | null;
   /** Valores da linha (vazio = cliente recebeu, valor a lançar no perfil). */
   entradas: EntradaLida[];
+  /** Total a receber informado (vale para a categoria única da linha). */
+  total_previsto: number | null;
+  /** Recebimento integral informado (Situação "integral" ou coluna Sim). */
+  integral: boolean;
   /** Conteúdo original da linha (cabeçalho → texto), guardado com cada recebimento. */
   original: Record<string, string>;
   avisos: string[];
@@ -339,8 +419,13 @@ function interpretarLinha(
   const categoria = categoriaDoTexto(categoriaTexto);
   if (categoriaTexto && !categoria)
     avisos.push(
-      `Categoria "${categoriaTexto}" não reconhecida — escolha Contratual, Atrasados ou Sucumbência.`,
+      `Categoria "${categoriaTexto}" não reconhecida — escolha Atrasados, Implantação ou Sucumbência.`,
     );
+
+  const situacaoTexto = texto("situacao");
+  const situacao = situacaoDoTexto(situacaoTexto);
+  if (situacaoTexto && !situacao)
+    avisos.push(`Situação "${situacaoTexto}" não reconhecida — valor tratado como recebido.`);
 
   const entradas: EntradaLida[] = [];
   for (const [i, campo] of colunas) {
@@ -367,6 +452,24 @@ function interpretarLinha(
     });
   }
 
+  let totalPrevisto: number | null = null;
+  const iTotal = col("total_previsto");
+  if (iTotal !== undefined) {
+    const t = valorCelula(cel(iTotal));
+    if (t !== null && t > 0) totalPrevisto = t;
+    else if (textoCelula(cel(iTotal)) !== null)
+      avisos.push(`Total a receber "${textoCelula(cel(iTotal))}" não reconhecido (ignorado).`);
+  }
+  const categoriasDaLinha = new Set(entradas.map((e) => e.classificacao));
+  if (totalPrevisto !== null && (categoriasDaLinha.size !== 1 || categoriasDaLinha.has(null))) {
+    avisos.push(
+      "Total a receber ignorado: a linha não tem uma única categoria identificada — informe no card do processo.",
+    );
+    totalPrevisto = null;
+  }
+  const integralColuna = simNao(texto("integral"));
+  const integral = integralColuna ?? situacao === "integral";
+
   let data: string | null = null;
   const iData = col("data");
   if (iData !== undefined) {
@@ -391,7 +494,21 @@ function interpretarLinha(
     });
     return [];
   }
-  // Sem valor: a linha continua válida (cliente vai para JÁ PAGOS; valores
+  // Valor previsto, pendente, cálculo ou cobrança: não é recebimento efetivo.
+  if (situacao === "nao_recebido") {
+    pendentes.push({
+      linha,
+      motivo: `Situação "${situacaoTexto}": não é recebimento efetivo — nada foi lançado como recebido.`,
+      resumo: resumo || reclamante,
+    });
+    return [];
+  }
+  for (const e of entradas)
+    if (!e.classificacao)
+      avisos.push(
+        `${brl(e.valor)} sem categoria identificada — fica para conferência (escolha a categoria na prévia ou no perfil).`,
+      );
+  // Sem valor: a linha continua válida (só identifica o cliente; valores
   // são lançados depois, manualmente, no perfil).
 
   return [
@@ -408,6 +525,8 @@ function interpretarLinha(
       data,
       observacao: texto("observacao"),
       entradas,
+      total_previsto: totalPrevisto,
+      integral,
       original,
       avisos,
     },
@@ -424,6 +543,9 @@ export const CABECALHOS_MODELO_RECEBIMENTOS = [
   "CPF",
   "Valor",
   "Categoria",
+  "Situação",
+  "Total a receber",
+  "Recebimento integral",
   "Data",
   "Número",
   "Pasta",

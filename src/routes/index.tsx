@@ -301,8 +301,8 @@ function DistribuicaoSituacao({
 }
 
 const COR_GRUPO: Record<GrupoClassificacao, string> = {
-  contratuais: "bg-info",
   atrasados: "bg-money",
+  implantacao: "bg-info",
   sucumbencia: "bg-warning",
   sem_classificacao: "bg-muted-foreground/40",
 };

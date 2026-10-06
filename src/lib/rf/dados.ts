@@ -9,6 +9,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { db } from "@/lib/furtado/persistencia";
 import { normalizarTexto } from "@/lib/situacao";
 import type { Pagamento } from "@/lib/tipos";
+import type { CategoriaProcessoCfg } from "@/lib/valoresProcesso";
 
 import type { ChaveCampo } from "./campos";
 
@@ -243,6 +244,8 @@ export interface RegistroRF {
   /** Situação de pagamento DESTE processo (JÁ PAGOS quando true). */
   pago: boolean;
   pago_em: string | null;
+  /** true = finalizado pela regra dos três cards (Atrasados, Implantação, Sucumbência). */
+  finalizacao_validada?: boolean;
   origens: { arquivo?: string; aba?: string; linha?: number }[] | unknown[];
   created_at: string;
   updated_at: string;
@@ -296,6 +299,8 @@ export interface PerfilRF {
   revisoes: RevisaoRF[];
   historico: HistoricoRF[];
   pagamentos: Pagamento[];
+  /** Situação por processo e categoria (total a receber, integral, "não haverá"). */
+  categorias: CategoriaProcessoCfg[];
   outrosClientes: Map<string, { id: string; nome: string; cpf: string | null }>;
   importacoes: Map<
     string,
@@ -348,7 +353,8 @@ export const perfilRFQuery = (clienteId: string) =>
         ...new Set(revs.map((r) => r.outro_cliente_id).filter(Boolean)),
       ] as string[];
       const impIds = [...new Set(lins.map((l) => l.importacao_id).filter(Boolean))] as string[];
-      const [outros, imps] = await Promise.all([
+      const idsRegistros = ((registros.data ?? []) as { id: string }[]).map((r) => r.id);
+      const [outros, imps, cats] = await Promise.all([
         outrosIds.length
           ? db.from("clientes").select("id,nome,cpf").in("id", outrosIds)
           : Promise.resolve({ data: [], error: null }),
@@ -358,9 +364,13 @@ export const perfilRFQuery = (clienteId: string) =>
               .select("id,nome_importacao,origem_arquivo,created_at")
               .in("id", impIds)
           : Promise.resolve({ data: [], error: null }),
+        idsRegistros.length
+          ? db.from("processo_categorias").select("*").in("atendimento_id", idsRegistros)
+          : Promise.resolve({ data: [], error: null }),
       ]);
       if (outros.error) falha(outros.error.message);
       if (imps.error) falha(imps.error.message);
+      if (cats.error) falha(cats.error.message);
 
       return {
         cliente: { ...(cli.data as any), dados_rf: (cli.data as any).dados_rf ?? {} } as ClienteRF,
@@ -371,6 +381,10 @@ export const perfilRFQuery = (clienteId: string) =>
         pagamentos: ((pagamentos.data ?? []) as Pagamento[]).map((p) => ({
           ...p,
           valor: Number(p.valor),
+        })),
+        categorias: ((cats.data ?? []) as CategoriaProcessoCfg[]).map((c) => ({
+          ...c,
+          total_previsto: c.total_previsto === null ? null : Number(c.total_previsto),
         })),
         outrosClientes: new Map(((outros.data ?? []) as any[]).map((o) => [o.id, o])),
         importacoes: new Map(((imps.data ?? []) as any[]).map((i) => [i.id, i])),

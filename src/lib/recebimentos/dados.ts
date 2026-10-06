@@ -84,7 +84,9 @@ export type ResultadoRecebimento =
   | "valor_invalido"
   | "marcado_pago"
   | "ja_pago"
-  | "processo_nao_definido";
+  | "processo_nao_definido"
+  | "sem_valor"
+  | "conflito_nao_havera";
 
 export interface LinhaResultado {
   linha: number;
@@ -106,6 +108,8 @@ export const ROTULO_RESULTADO: Record<ResultadoRecebimento, string> = {
   marcado_pago: "Sem valor — lançar no perfil",
   ja_pago: "Sem valor — processo já estava em JÁ PAGOS",
   processo_nao_definido: "Escolha o processo",
+  sem_valor: "Sem valor — lançar no perfil",
+  conflito_nao_havera: "Não lançado: processo marcado “Não haverá sucumbência”",
 };
 
 /** Itens por chamada (cada chamada é uma transação). */

@@ -108,6 +108,8 @@ const TOM_RESULTADO: Record<ResultadoRecebimento, "sucesso" | "neutro" | "alerta
   marcado_pago: "alerta",
   ja_pago: "neutro",
   processo_nao_definido: "alerta",
+  sem_valor: "neutro",
+  conflito_nao_havera: "alerta",
 };
 
 function ImportarRecebimentos() {
@@ -312,12 +314,12 @@ function ImportarRecebimentos() {
       toast.success(
         `Importação concluída: ${final.valoresNovos} valor(es) registrado(s)` +
           (final.clientesMovidos
-            ? `, ${final.clientesMovidos} processo(s) movido(s) para JÁ PAGOS.`
-            : "."),
+            ? `, ${final.clientesMovidos} cliente(s) sem processo movido(s) para JÁ PAGOS.`
+            : ". Os processos só vão para JÁ PAGOS quando os três cards estiverem completos."),
       );
       if (revisao.length === 0 && planilha.pendentes.length === 0) {
-        // Sucesso sem pendências: fecha a importação e mostra JÁ PAGOS.
-        void navigate({ to: "/ja-pagos" });
+        // Sucesso sem pendências: fecha a importação e mostra CLIENTES.
+        void navigate({ to: "/clientes" });
         return;
       }
       setRelatorio(final);
@@ -347,7 +349,7 @@ function ImportarRecebimentos() {
       </Button>
       <PageHeader
         titulo="Clientes com valores recebidos"
-        descricao="Identifica o cliente já cadastrado pelo Reclamante (ou CPF) e registra os valores recebidos no mesmo perfil, que passa para JÁ PAGOS."
+        descricao="Identifica o cliente já cadastrado pelo Reclamante (ou CPF) e registra os valores recebidos nos cards Atrasados, Implantação e Sucumbência do processo."
       >
         <Button asChild variant="outline">
           <a href={ARQUIVO_MODELO_RECEBIMENTOS} download>
@@ -404,12 +406,17 @@ function ImportarRecebimentos() {
               </li>
               <li>
                 <strong className="text-foreground">Opcionais:</strong> Valor (ou colunas
-                “Contratual”, “Atrasados”, “Sucumbência”), CPF, Categoria, Data, Número do processo,
-                Pasta, Observação.
+                “Atrasados”, “Implantação”, “Sucumbência”), CPF, Categoria, Situação, Total a
+                receber, Recebimento integral, Data, Número do processo, Pasta, Observação.
               </li>
               <li>
-                Linha sem valor: o cliente vai para JÁ PAGOS e os valores recebidos podem ser
-                lançados depois, manualmente, no perfil do cliente.
+                Só entra como recebido o recebimento efetivo: linha com Situação “previsto”,
+                “pendente”, “a receber”, cálculo ou cobrança não é importada. Valor sem categoria ou
+                sem processo identificado fica para conferência.
+              </li>
+              <li>
+                Linha sem valor: nada é lançado; os valores recebidos podem ser lançados depois,
+                manualmente, no perfil do cliente.
               </li>
               <li>
                 O cliente é localizado na base pelo CPF ou pelo nome idêntico. Nenhum cliente novo é
@@ -420,9 +427,10 @@ function ImportarRecebimentos() {
               </li>
               <li>Reimportar o mesmo arquivo não duplica valores.</li>
               <li>
-                O pagamento é marcado por PROCESSO: o processo da linha (pela Pasta ou Número, ou o
-                único processo do cliente) passa para JÁ PAGOS; os demais processos do mesmo cliente
-                continuam em CLIENTES. Cliente com vários processos: escolha o processo na prévia.
+                Os valores vão para o PROCESSO da linha (pela Pasta ou Número, ou o único processo
+                do cliente). A importação não finaliza o processo: ele só vai para JÁ PAGOS quando
+                Atrasados, Implantação e Sucumbência estiverem resolvidos. Cliente com vários
+                processos: escolha o processo na prévia.
               </li>
             </ul>
           </Card>
@@ -483,9 +491,11 @@ function ImportarRecebimentos() {
               valor={resumo.clientesIdentificados}
               icone={UserCheck}
               tom="info"
-              descricao={`${resumo.clientesMovidos} processo(s) vão para JÁ PAGOS${
-                aEscolher ? ` · ${aEscolher} linha(s): escolha o processo` : ""
-              }`}
+              descricao={`${
+                resumo.clientesMovidos
+                  ? `${resumo.clientesMovidos} cliente(s) sem processo vão para JÁ PAGOS`
+                  : "Valores vão para os cards do processo"
+              }${aEscolher ? ` · ${aEscolher} linha(s): escolha o processo` : ""}`}
             />
             <StatCard
               titulo="Valores novos"
@@ -509,7 +519,7 @@ function ImportarRecebimentos() {
               valor={resumo.clientesSemValor}
               icone={Wallet}
               tom={resumo.clientesSemValor ? "warning" : "neutro"}
-              descricao="Vão para JÁ PAGOS — lance os valores depois, no perfil"
+              descricao="Nada é lançado — lance os valores depois, no perfil"
             />
             <StatCard
               titulo="Para revisão"
@@ -636,8 +646,11 @@ function ImportarRecebimentos() {
               <p className="text-base font-semibold">Importação concluída</p>
               <p className="text-sm text-muted-foreground">
                 {relatorio.valoresNovos} valor(es) registrado(s) · total{" "}
-                {formatBRL(relatorio.totalNovo)} · {relatorio.clientesMovidos} processo(s) movido(s)
-                para JÁ PAGOS · {relatorio.valoresJaRegistrados} já registrado(s)
+                {formatBRL(relatorio.totalNovo)} ·{" "}
+                {relatorio.clientesMovidos
+                  ? `${relatorio.clientesMovidos} cliente(s) sem processo movido(s) para JÁ PAGOS · `
+                  : ""}
+                {relatorio.valoresJaRegistrados} já registrado(s)
                 {relatorio.clientesSemValor
                   ? ` · ${relatorio.clientesSemValor} linha(s) sem valor — lance os valores no perfil do cliente`
                   : ""}
@@ -665,7 +678,7 @@ function ImportarRecebimentos() {
           ) : null}
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link to="/ja-pagos">Ir para JÁ PAGOS</Link>
+              <Link to="/clientes">Ir para CLIENTES</Link>
             </Button>
             <Button variant="outline" onClick={reiniciar}>
               Importar outro arquivo
@@ -757,13 +770,13 @@ function TabelaValores({
                       }
                     >
                       <SelectTrigger
-                        className="h-8"
+                        className={cn("h-8", !i.classificacao && "border-warning text-warning")}
                         aria-label={`Categoria do valor da linha ${i.linha}`}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="nenhuma">Sem categoria</SelectItem>
+                        <SelectItem value="nenhuma">Sem categoria (conferência)</SelectItem>
                         {CLASSIFICACOES_ENTRADA.map((c) => (
                           <SelectItem key={c.value} value={c.value}>
                             {c.label.toUpperCase()}

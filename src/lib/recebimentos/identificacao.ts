@@ -235,8 +235,9 @@ export function processoDaLinha(
 
 /**
  * Item enviado à função `aplicar_importacao_recebimentos`: um por
- * recebimento, ou um item `sem_valor` para a linha sem valor (o cliente só é
- * movido para JÁ PAGOS; os valores são lançados depois, no perfil).
+ * recebimento, ou um item `sem_valor` para a linha sem valor (nada é lançado;
+ * os valores vão depois no perfil). A importação nunca finaliza processo:
+ * PAGO / FINALIZADO depende dos três cards (Atrasados, Implantação, Sucumbência).
  */
 export interface ItemRecebimento {
   linha: number;
@@ -251,6 +252,10 @@ export interface ItemRecebimento {
   atendimento_id: string | null;
   chave: string;
   observacao: string | null;
+  /** Total a receber da categoria (só completa o card se estiver vazio). */
+  total_previsto?: number | null;
+  /** Recebimento integral informado na planilha. */
+  integral?: boolean;
   dados_origem: Record<string, unknown>;
 }
 
@@ -309,6 +314,8 @@ export function montarItens(
         atendimento_id: atendimento,
         chave: `rv:${l.data ?? "sd"}:${centavos}:${n}`,
         observacao: l.observacao,
+        total_previsto: l.total_previsto,
+        integral: l.integral,
         dados_origem: {
           arquivo,
           linha: l.linha,
