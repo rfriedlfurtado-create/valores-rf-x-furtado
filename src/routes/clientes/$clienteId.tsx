@@ -1050,6 +1050,9 @@ function ProcessoSelecionado({
   const sincronizar = useSincronizar();
   const bloco = blocoPerfil("processo");
   const d = dadosDoRegistro(r);
+  // Recolhido por padrão: só o cabeçalho (número, situação e ações) fica visível.
+  const [aberto, setAberto] = useState(false);
+  const idConteudo = useId();
   const mutacao = useMutation({
     mutationFn: (pago: boolean) => definirProcessoPago(r.id, pago),
     onSuccess: async (_, pago) => {
@@ -1065,24 +1068,48 @@ function ProcessoSelecionado({
 
   return (
     <div>
-      <div className="flex flex-col gap-3 border-b border-border bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Processo selecionado
-          </p>
-          <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-            <span className="tabular">{d.numero || "Sem número"}</span>
-            <BadgeEscritorio escritorio={r.escritorio} />
-            <BadgeStatus
-              texto={
-                r.pago
-                  ? `Pago${r.pago_em ? ` em ${formatDate(r.pago_em)}` : ""} · JÁ PAGOS`
-                  : "Em tramitação · CLIENTES"
-              }
-              tom={r.pago ? "sucesso" : "neutro"}
-            />
-          </p>
-        </div>
+      <div
+        className={cn(
+          "flex flex-col gap-3 bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between",
+          aberto && "border-b border-border",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setAberto((v) => !v)}
+          aria-expanded={aberto}
+          aria-controls={idConteudo}
+          data-state={aberto ? "aberto" : "recolhido"}
+          className="-m-2 flex min-w-0 flex-1 items-start gap-2 rounded-lg p-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronDown
+            className={cn(
+              "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              !aberto && "-rotate-90",
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Processo selecionado
+              <span className="ml-2 font-normal normal-case tracking-normal">
+                {aberto ? "(clique para recolher)" : "(clique para expandir)"}
+              </span>
+            </span>
+            <span className="flex flex-wrap items-center gap-2 text-base font-semibold">
+              <span className="tabular">{d.numero || "Sem número"}</span>
+              <BadgeEscritorio escritorio={r.escritorio} />
+              <BadgeStatus
+                texto={
+                  r.pago
+                    ? `Pago${r.pago_em ? ` em ${formatDate(r.pago_em)}` : ""} · JÁ PAGOS`
+                    : "Em tramitação · CLIENTES"
+                }
+                tom={r.pago ? "sucesso" : "neutro"}
+              />
+            </span>
+          </span>
+        </button>
         <div className="flex flex-wrap gap-2">
           <DialogPagamento
             clienteFixo={perfil.cliente}
@@ -1124,41 +1151,43 @@ function ProcessoSelecionado({
           </p>
         </div>
       ) : null}
-      <CamposDoBloco
-        campos={bloco.campos}
-        valor={(c) => d[c]}
-        renderizar={(chave) => (
-          <CampoEditavel
-            key={`${r.id}-${chave}`}
-            chave={chave}
-            valor={d[chave]}
-            salvar={salvarCampoRegistro(r, chave)}
-          />
-        )}
-      />
-      {Object.keys(r.informacoes_adicionais ?? {}).length || linhas.length ? (
-        <div className="space-y-4 border-t border-border p-4">
-          {Object.keys(r.informacoes_adicionais ?? {}).length ? (
-            <Secao
-              titulo="Informações adicionais"
-              descricao="Colunas extras da planilha, preservadas como recebidas."
-            >
-              {Object.entries(r.informacoes_adicionais).map(([k, v]) => (
-                <CampoEditavel
-                  key={k}
-                  chave={k}
-                  rotulo={k}
-                  valor={v}
-                  salvar={(novo) =>
-                    editarCampo({ entidade: "adicional", id: r.id, campo: k, valor: novo })
-                  }
-                />
-              ))}
-            </Secao>
-          ) : null}
-          {linhas.length ? <LinhasDeOrigem linhas={linhas} perfil={perfil} /> : null}
-        </div>
-      ) : null}
+      <div id={idConteudo} hidden={!aberto}>
+        <CamposDoBloco
+          campos={bloco.campos}
+          valor={(c) => d[c]}
+          renderizar={(chave) => (
+            <CampoEditavel
+              key={`${r.id}-${chave}`}
+              chave={chave}
+              valor={d[chave]}
+              salvar={salvarCampoRegistro(r, chave)}
+            />
+          )}
+        />
+        {Object.keys(r.informacoes_adicionais ?? {}).length || linhas.length ? (
+          <div className="space-y-4 border-t border-border p-4">
+            {Object.keys(r.informacoes_adicionais ?? {}).length ? (
+              <Secao
+                titulo="Informações adicionais"
+                descricao="Colunas extras da planilha, preservadas como recebidas."
+              >
+                {Object.entries(r.informacoes_adicionais).map(([k, v]) => (
+                  <CampoEditavel
+                    key={k}
+                    chave={k}
+                    rotulo={k}
+                    valor={v}
+                    salvar={(novo) =>
+                      editarCampo({ entidade: "adicional", id: r.id, campo: k, valor: novo })
+                    }
+                  />
+                ))}
+              </Secao>
+            ) : null}
+            {linhas.length ? <LinhasDeOrigem linhas={linhas} perfil={perfil} /> : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
