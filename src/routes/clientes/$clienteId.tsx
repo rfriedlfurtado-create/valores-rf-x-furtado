@@ -886,54 +886,39 @@ function SecaoProcessos({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const titulo =
-    visao === "pagos"
-      ? "Processos pagos"
-      : visao === "clientes"
-        ? "Processos em tramitação"
-        : "Processos";
-
   return (
     <Card className="gap-0 p-0">
-      <div className="flex flex-col gap-1 border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold">
-          {titulo} ({visiveis.length})
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          {perfil.registros.length === 0
-            ? "Nenhum processo registrado para este cliente."
-            : visiveis.length > 1
-              ? "Selecione um processo pelo número. Todas as informações abaixo passam a mostrar somente o processo selecionado."
-              : "As informações abaixo são somente deste processo."}
-        </p>
-        {semVisao ? (
-          <p className="text-xs text-warning">
-            Nenhum processo deste cliente está em {visao ? ROTULO_VISAO[visao] : ""} — exibindo
-            todos os processos.
-          </p>
-        ) : null}
-        {foraDaVisao > 0 && !semVisao ? (
-          <p className="text-xs text-muted-foreground">
-            Este cliente também tem {foraDaVisao} processo(s) em {ROTULO_VISAO[outra]} (mesmo
-            cadastro).{" "}
-            <button
-              type="button"
-              className="font-semibold text-primary underline-offset-2 hover:underline"
-              onClick={() => trocarVisao(outra)}
-            >
-              Ver processos em {ROTULO_VISAO[outra]}
-            </button>{" "}
-            ·{" "}
-            <button
-              type="button"
-              className="font-semibold text-primary underline-offset-2 hover:underline"
-              onClick={() => trocarVisao(undefined)}
-            >
-              Ver todos
-            </button>
-          </p>
-        ) : null}
-      </div>
+      {semVisao || foraDaVisao > 0 ? (
+        <div className="flex flex-col gap-1 border-b border-border px-5 py-3">
+          {semVisao ? (
+            <p className="text-xs text-warning">
+              Nenhum processo deste cliente está em {visao ? ROTULO_VISAO[visao] : ""} — exibindo
+              todos os processos.
+            </p>
+          ) : null}
+          {foraDaVisao > 0 && !semVisao ? (
+            <p className="text-xs text-muted-foreground">
+              Este cliente também tem {foraDaVisao} processo(s) em {ROTULO_VISAO[outra]} (mesmo
+              cadastro).{" "}
+              <button
+                type="button"
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+                onClick={() => trocarVisao(outra)}
+              >
+                Ver processos em {ROTULO_VISAO[outra]}
+              </button>{" "}
+              ·{" "}
+              <button
+                type="button"
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+                onClick={() => trocarVisao(undefined)}
+              >
+                Ver todos
+              </button>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {perfil.registros.length === 0 ? (
         <div className="flex flex-col gap-3 px-5 py-5 text-sm sm:flex-row sm:items-center sm:justify-between">
