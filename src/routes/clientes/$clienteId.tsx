@@ -1018,12 +1018,15 @@ function SecaoProcessos({
             perfil={perfil}
             registro={registro}
             linhas={linhas.get(registro.id) ?? []}
-          />
-          {/* VALORES RECEBIDOS: somente do processo selecionado (atualiza ao trocar). */}
-          <ValoresRecebidosProcesso
-            key={`${registro.id}-valores`}
-            perfil={perfil}
-            registro={registro}
+            areaValores={
+              /* VALORES RECEBIDOS logo abaixo do cabeçalho do processo selecionado
+                 (somente deste processo; atualiza ao trocar). */
+              <ValoresRecebidosProcesso
+                key={`${registro.id}-valores`}
+                perfil={perfil}
+                registro={registro}
+              />
+            }
           />
         </>
       ) : selecionado === SEM_PROCESSO ? (
@@ -1041,10 +1044,13 @@ function ProcessoSelecionado({
   perfil,
   registro: r,
   linhas,
+  areaValores,
 }: {
   perfil: PerfilRF;
   registro: RegistroRF;
   linhas: PerfilRF["linhas"];
+  /** Área VALORES RECEBIDOS, exibida logo abaixo do cabeçalho do processo. */
+  areaValores?: ReactNode;
 }) {
   const sincronizar = useSincronizar();
   const bloco = blocoPerfil("processo");
@@ -1164,6 +1170,7 @@ function ProcessoSelecionado({
           </Button>
         </div>
       </div>
+      {areaValores}
       {r.revisao_motivo ? (
         <div className="flex items-start gap-3 border-b border-border bg-warning-soft px-5 py-3 text-sm text-warning">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
