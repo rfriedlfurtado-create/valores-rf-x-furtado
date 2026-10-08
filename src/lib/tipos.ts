@@ -23,6 +23,8 @@ export interface Cliente {
   data_importacao: string | null;
   /** Escritório que originou o cadastro ('a_confirmar' quando não comprovado). */
   escritorio_origem: "furtado" | "ricardo_friedl" | "a_confirmar";
+  /** Identificado como cliente do Ricardo Friedl (importação CLIENTES RICARDO FRIEDL). */
+  cliente_rf?: boolean;
   /** Campos do modelo oficial (ex.: cpf_cnpj = coluna "CPF" da planilha). */
   dados_rf?: { cpf_cnpj?: string | null; [chave: string]: unknown } | null;
   arquivado: boolean;

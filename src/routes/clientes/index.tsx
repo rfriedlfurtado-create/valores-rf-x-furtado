@@ -126,7 +126,7 @@ function Clientes() {
     <div>
       <PageHeader
         titulo="Clientes"
-        descricao={`${totalEmTramitacao} cliente(s) com processo em tramitação. Para importar, arraste a planilha para esta página.`}
+        descricao={`${totalEmTramitacao} cliente(s). Vão para JÁ PAGOS somente os clientes do Ricardo Friedl com recebimento confirmado. Para importar, arraste a planilha para esta página.`}
       >
         <DialogPagamento
           clientes={base.clientes}
@@ -167,11 +167,11 @@ function Clientes() {
 
       {lista.length === 0 ? (
         <SecaoVazia
-          titulo="Nenhum cliente em tramitação"
+          titulo="Nenhum cliente nesta página"
           descricao={
             busca
               ? "Nenhum resultado para a pesquisa atual."
-              : "Nenhum cliente em tramitação cadastrado. Use “Importar clientes” para começar."
+              : "Nenhum cliente cadastrado. Use “Importar clientes” para começar."
           }
         />
       ) : (

@@ -3,7 +3,7 @@
  * modalidades independentes:
  *
  *   ┌──────────────────────────┬───────────────────────────────┐
- *   │ Importação de clientes   │ Clientes com valores recebidos │
+ *   │ CLIENTES RICARDO FRIEDL  │ Clientes com valores recebidos │
  *   │ (modelo atual: cadastro  │ (identifica o cliente existente│
  *   │  de clientes/processos)  │  e registra os recebimentos)   │
  *   └──────────────────────────┴───────────────────────────────┘
@@ -133,9 +133,9 @@ export function DialogImportar({
             modalidade="clientes"
             tom="primario"
             icone={<UserPlus className="size-6" aria-hidden />}
-            titulo="Importação de clientes"
-            subtitulo="Modelo atual de importação"
-            descricao="Cadastra e atualiza clientes e processos pela planilha CLIENTES RF - ESPAIDER (22 colunas). Não registra valores recebidos."
+            titulo="CLIENTES RICARDO FRIEDL"
+            subtitulo="Identifica os clientes do Ricardo Friedl"
+            descricao="Cadastra ou atualiza clientes e processos pela planilha CLIENTES RF - ESPAIDER e os identifica como clientes do Ricardo Friedl. Sozinha, não leva ninguém para JÁ PAGOS."
             arquivoSolto={arquivoSolto}
             importar={importar}
           />
@@ -145,7 +145,7 @@ export function DialogImportar({
             icone={<BadgeDollarSign className="size-6" aria-hidden />}
             titulo="Clientes com valores recebidos"
             subtitulo="Nova modalidade de importação"
-            descricao="Importe clientes que já possuem valores recebidos e vincule os recebimentos ao perfil existente."
+            descricao="Registra recebimentos de Contratual/Implantação, Atrasados e Sucumbência na seção VALORES RECEBIDOS. Cliente que não existe é criado em CLIENTES; vai para JÁ PAGOS só se também for cliente Ricardo Friedl."
             arquivoSolto={arquivoSolto}
             importar={importar}
           />

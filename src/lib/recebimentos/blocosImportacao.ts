@@ -6,7 +6,7 @@
  * Cliente:
  *  1. CPF válido → cliente com o mesmo CPF;
  *  2. nome idêntico (normalizado) ou variação confirmada;
- *  3. não encontrado → NOVO cliente em JÁ PAGOS — salvo quando há nome
+ *  3. não encontrado → NOVO cliente em CLIENTES — salvo quando há nome
  *     parecido na base ou no próprio arquivo: aí fica PENDENTE de decisão
  *     (nunca une por semelhança).
  * Processo/benefício:

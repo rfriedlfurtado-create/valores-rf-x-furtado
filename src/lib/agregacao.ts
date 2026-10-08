@@ -23,9 +23,9 @@ export interface BaseAgregada {
   clientes: ClienteComTotais[];
   porId: Map<string, ClienteComTotais>;
   pagamentosPorCliente: Map<string, Pagamento[]>;
-  /** Visão CLIENTES: clientes com ao menos um processo em tramitação. */
+  /** Página CLIENTES (exclusiva). */
   emTramitacao: ClienteComTotais[];
-  /** Visão JÁ PAGOS: clientes com ao menos um processo pago (o mesmo cadastro pode estar nas duas). */
+  /** Página JÁ PAGOS: cliente Ricardo Friedl com recebimento confirmado. */
   jaPagos: ClienteComTotais[];
   /** Indicadores do sistema (Dashboard, cabeçalhos, históricos). */
   indicadores: Indicadores;
@@ -82,20 +82,13 @@ export function agregarBase(
     const datas = lista.map((p) => p.data_pagamento).sort();
     const processos = processosPorCliente.get(cliente.id) ?? [];
     const dosPagos = entradasDosPagos({ ...cliente, processos }, lista);
-    const pagosEm = processos
-      .filter((p) => p.pago)
-      .map((p) => p.pago_em ?? cliente.updated_at)
-      .sort();
     return {
       ...cliente,
       processos,
       totalRecebidoPagos: dosPagos.reduce((soma, p) => soma + p.valor, 0),
       quantidadePagamentosPagos: dosPagos.length,
-      pagoEm: pagosEm.length
-        ? pagosEm[pagosEm.length - 1]!
-        : processos.length === 0 && cliente.status === "pago"
-          ? cliente.updated_at
-          : null,
+      // JÁ PAGOS: data do recebimento confirmado mais recente.
+      pagoEm: dosPagos.length ? (datas[datas.length - 1] ?? null) : null,
       totalRecebido: lista.reduce((soma, p) => soma + p.valor, 0),
       quantidadePagamentos: lista.length,
       ultimoPagamento: datas.length ? datas[datas.length - 1]! : null,

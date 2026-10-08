@@ -8,6 +8,8 @@ import { agregarBase } from "@/lib/agregacao";
 import {
   calcularIndicadores,
   correspondeBusca,
+  motivoDaPagina,
+  processosDaVisao,
   SITUACAO_POR_STATUS,
   situacaoDoCliente,
 } from "@/lib/situacao";
@@ -122,7 +124,7 @@ describe("busca única", () => {
   });
 });
 
-describe("pagamento por processo", () => {
+describe("páginas exclusivas CLIENTES / JÁ PAGOS (cliente RF + recebimento)", () => {
   const proc = (id: string, cliente_id: string, pago: boolean) => ({
     id,
     cliente_id,
@@ -132,47 +134,51 @@ describe("pagamento por processo", () => {
     pago_em: pago ? "2026-10-01T00:00:00Z" : null,
   });
 
-  test("cliente com processos pagos e não pagos aparece nas duas visões (mesmo cadastro)", () => {
-    const misto = cliente({ nome: "Misto" });
-    const soPago = cliente({ nome: "Só pago", status: "pago" });
-    const semProcesso = cliente({ nome: "Sem processo" });
-    const pagos = [
-      { ...pagamento(misto.id, 1000), atendimento_id: "m1" },
-      { ...pagamento(misto.id, 300), atendimento_id: "m2" },
-    ];
-    const base = agregarBase([misto, soPago, semProcesso], pagos, new Date(), [
-      proc("m1", misto.id, true),
-      proc("m2", misto.id, false),
-      proc("s1", soPago.id, true),
-    ]);
+  test("cada cliente fica em uma única página, definida por clientes.status", () => {
+    // status 'pago' é gravado pelo banco só para cliente RF com recebimento confirmado.
+    const pago = cliente({ nome: "RF com recebimento", status: "pago" });
+    const rfSemRecebimento = cliente({ nome: "RF sem recebimento" });
+    const soValores = cliente({ nome: "Só valores" });
+    const base = agregarBase(
+      [pago, rfSemRecebimento, soValores],
+      [
+        { ...pagamento(pago.id, 1000), atendimento_id: "p1" },
+        { ...pagamento(pago.id, 300), atendimento_id: "p2" },
+        { ...pagamento(soValores.id, 50), atendimento_id: null },
+      ],
+      new Date(),
+      [
+        proc("p1", pago.id, true),
+        proc("p2", pago.id, false),
+        proc("r1", rfSemRecebimento.id, true),
+      ],
+    );
 
-    expect(base.emTramitacao.map((c) => c.id).sort()).toEqual([misto.id, semProcesso.id].sort());
-    expect(base.jaPagos.map((c) => c.id).sort()).toEqual([misto.id, soPago.id].sort());
-    // O mesmo objeto de cliente nas duas visões (nenhuma cópia).
-    expect(base.emTramitacao.find((c) => c.id === misto.id)).toBe(base.porId.get(misto.id));
+    expect(base.jaPagos.map((c) => c.id)).toEqual([pago.id]);
+    expect(base.emTramitacao.map((c) => c.id).sort()).toEqual(
+      [rfSemRecebimento.id, soValores.id].sort(),
+    );
+    // Processo finalizado (pago) não move o cliente de página.
+    expect(base.jaPagos.some((c) => c.id === rfSemRecebimento.id)).toBe(false);
 
-    // JÁ PAGOS soma só os valores dos processos pagos — não mistura.
-    const m = base.porId.get(misto.id)!;
-    expect(m.totalRecebidoPagos).toBe(1000);
-    expect(m.totalRecebido).toBe(1300);
-    expect(m.pagoEm).toBe("2026-10-01T00:00:00Z");
+    // Em JÁ PAGOS todos os processos e valores do cliente aparecem (não mistura páginas).
+    const p = base.porId.get(pago.id)!;
+    expect(processosDaVisao(p.processos, "pagos").map((x) => x.id)).toEqual(["p1", "p2"]);
+    expect(p.totalRecebidoPagos).toBe(1300);
+    expect(base.porId.get(soValores.id)!.totalRecebidoPagos).toBe(0);
 
-    expect(base.indicadores).toMatchObject({
-      totalClientes: 3,
-      emTramitacao: 2,
-      jaPagos: 2,
-      processosPagos: 2,
-      processosEmTramitacao: 2,
-      valorRecebidoDePagos: 1000,
-      pagosSemValor: 1,
-    });
+    expect(base.indicadores).toMatchObject({ totalClientes: 3, emTramitacao: 2, jaPagos: 1 });
   });
 
-  test("valor sem processo não entra nos totais dos processos pagos", () => {
-    const c = cliente({ nome: "Ana" });
-    const base = agregarBase([c], [{ ...pagamento(c.id, 50), atendimento_id: null }], new Date(), [
-      proc("a1", c.id, true),
-    ]);
-    expect(base.porId.get(c.id)!.totalRecebidoPagos).toBe(0);
+  test("motivo da página explica as duas condições", () => {
+    expect(motivoDaPagina({ status: "pago", cliente_rf: true, temRecebimento: true })).toMatch(
+      /recebimento confirmado/,
+    );
+    expect(motivoDaPagina({ status: "ativo", cliente_rf: false, temRecebimento: true })).toMatch(
+      /não está identificado como cliente Ricardo Friedl/,
+    );
+    expect(motivoDaPagina({ status: "ativo", cliente_rf: true, temRecebimento: false })).toMatch(
+      /sem recebimento confirmado/,
+    );
   });
 });

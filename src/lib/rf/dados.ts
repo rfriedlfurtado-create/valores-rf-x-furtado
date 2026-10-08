@@ -222,6 +222,8 @@ export interface ClienteRF {
   cpf_digitos: string | null;
   status: string;
   escritorio_origem: string;
+  /** Identificado como cliente do Ricardo Friedl. */
+  cliente_rf?: boolean;
   origem_importacao: string | null;
   data_importacao: string | null;
   dados_rf: DadosRF;

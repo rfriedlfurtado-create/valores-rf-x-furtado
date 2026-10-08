@@ -335,7 +335,7 @@ export function ImportacaoBlocos({
           valor={resumo.clientesExistentes + resumo.clientesNovos}
           icone={UserCheck}
           tom="info"
-          descricao={`${resumo.clientesExistentes} já cadastrado(s) · ${resumo.clientesNovos} novo(s) em JÁ PAGOS`}
+          descricao={`${resumo.clientesExistentes} já cadastrado(s) · ${resumo.clientesNovos} novo(s) em CLIENTES`}
         />
         <StatCard
           titulo="Pendentes de decisão"
@@ -419,8 +419,8 @@ export function ImportacaoBlocos({
         </div>
         <p className="text-xs text-muted-foreground">
           Recebido = confirmação expressa na planilha. Previsto = a receber, parcelas futuras ou sem
-          confirmação — vai para a página VALORES PREVISTOS e não entra no TOTAL RECEBIDO. Valor
-          bruto, valor do autor, RMI/RMA e totais da planilha ficam só como informação.
+          confirmação — fica como valor previsto no perfil do cliente e não entra no TOTAL RECEBIDO.
+          Valor bruto, valor do autor, RMI/RMA e totais da planilha ficam só como informação.
         </p>
       </Card>
 
@@ -579,7 +579,7 @@ function LinhaBloco({
         {a.cliente.acao === "existente" ? (
           <BadgeStatus texto="Cliente cadastrado" tom="sucesso" />
         ) : a.cliente.acao === "novo" ? (
-          <BadgeStatus texto="Novo · JÁ PAGOS" tom="neutro" />
+          <BadgeStatus texto="Novo · CLIENTES" tom="neutro" />
         ) : (
           <BadgeStatus texto="Decidir cliente" tom="alerta" />
         )}
@@ -628,7 +628,7 @@ function LinhaBloco({
                       {Math.round(s.percentual)}%)
                     </SelectItem>
                   ))}
-                  <SelectItem value="novo">Criar novo cliente em JÁ PAGOS: {b.nome}</SelectItem>
+                  <SelectItem value="novo">Criar novo cliente em CLIENTES: {b.nome}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -798,7 +798,7 @@ function Relatorio({
         </div>
       </div>
       <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <Item rotulo="Clientes criados (JÁ PAGOS)" valor={r.clientesCriados} />
+        <Item rotulo="Clientes criados (CLIENTES)" valor={r.clientesCriados} />
         <Item rotulo="Clientes atualizados" valor={r.clientesAtualizados} />
         <Item rotulo="Processos/benefícios vinculados" valor={r.processosVinculados} />
         <Item rotulo="Processos/benefícios criados" valor={r.processosCriados} />
@@ -824,13 +824,13 @@ function Relatorio({
       ) : null}
       <div className="flex flex-wrap gap-2">
         <Button asChild>
-          <Link to="/ja-pagos">Ir para JÁ PAGOS</Link>
+          <Link to="/clientes">
+            <ListChecks className="size-4" aria-hidden />
+            Ir para CLIENTES
+          </Link>
         </Button>
         <Button asChild variant="outline">
-          <Link to="/valores-previstos">
-            <ListChecks className="size-4" aria-hidden />
-            Ver VALORES PREVISTOS
-          </Link>
+          <Link to="/ja-pagos">Ir para JÁ PAGOS</Link>
         </Button>
         <Button variant="outline" onClick={aoReiniciar}>
           Importar outro arquivo

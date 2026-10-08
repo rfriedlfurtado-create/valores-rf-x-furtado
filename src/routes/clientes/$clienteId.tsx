@@ -22,6 +22,10 @@ import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { ValoresRecebidosProcesso } from "@/components/ValoresRecebidosProcesso";
+import {
+  OutrosRegistrosFinanceiros,
+  PrevistosSemProcesso,
+} from "@/components/perfil/FinanceiroPerfil";
 import { SecaoVazia } from "@/components/layout/AppShell";
 import { Valor } from "@/components/Valor";
 import { Button } from "@/components/ui/button";
@@ -69,14 +73,10 @@ import {
   valorInterpretado,
   valorParaEdicao,
 } from "@/lib/rf/valores";
-import {
-  classificarEntrada,
-  definirClientePago,
-  definirProcessoPago,
-  vincularEntradaProcesso,
-} from "@/lib/acoes";
+import { classificarEntrada, definirProcessoPago, vincularEntradaProcesso } from "@/lib/acoes";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
-import { fraseQuantidadeEntradas, resumirEntradas } from "@/lib/situacao";
+import { fraseQuantidadeEntradas, motivoDaPagina, resumirEntradas } from "@/lib/situacao";
+import { previstosDoClienteQuery } from "@/lib/valoresPrevistos";
 import {
   CLASSIFICACOES_ENTRADA,
   ROTULO_CLASSIFICACAO,
@@ -136,6 +136,7 @@ function PerfilCliente() {
   const { registro: registroBuscado, visao } = Route.useSearch();
   const navigate = useNavigate();
   const { data: perfil, isLoading, error } = useQuery(perfilRFQuery(clienteId));
+  const { data: previstos } = useQuery(previstosDoClienteQuery(clienteId));
   const vinculos = useVinculosEscritorio();
 
   if (isLoading) {
@@ -160,16 +161,18 @@ function PerfilCliente() {
 
   const { cliente } = perfil;
   const todos = perfil.registros;
-  // Visão de origem: CLIENTES mostra os processos não pagos; JÁ PAGOS, os pagos.
-  const daVisao = visao ? todos.filter((r) => (visao === "pagos" ? r.pago : !r.pago)) : todos;
-  const visiveis = daVisao.length ? daVisao : todos;
+  // A página (CLIENTES / JÁ PAGOS) é do cliente: todos os processos aparecem nas duas.
+  const visiveis = todos;
   const idsProcessos = new Set(todos.map((r) => r.id));
   const valoresSemProcesso = perfil.pagamentos.filter(
     (p) => !p.atendimento_id || !idsProcessos.has(p.atendimento_id),
   );
+  const previstosSemProcesso = (previstos ?? []).filter(
+    (v) => !v.atendimento_id || !idsProcessos.has(v.atendimento_id),
+  ).length;
   const opcoes = [
     ...visiveis.map((r) => r.id),
-    ...(valoresSemProcesso.length ? [SEM_PROCESSO] : []),
+    ...(valoresSemProcesso.length || previstosSemProcesso ? [SEM_PROCESSO] : []),
   ];
   // Um processo só: selecionado automaticamente. Vários: o escolhido (ou o primeiro).
   const selecionado =
@@ -187,8 +190,7 @@ function PerfilCliente() {
           ? perfil.pagamentos
           : [];
 
-  const qtdPagos = todos.filter((r) => r.pago).length;
-  const qtdAbertos = todos.length - qtdPagos;
+  const qtdFinalizados = todos.filter((r) => r.pago).length;
 
   const ir = (busca: { registro?: string; visao?: Visao }) =>
     void navigate({
@@ -212,17 +214,13 @@ function PerfilCliente() {
                 <BadgeEscritorio key={e} escritorio={e} completo />
               ))}
               {cliente.deleted_at ? <BadgeStatus texto="Arquivado" tom="neutro" /> : null}
-              {todos.length ? (
-                <>
-                  {qtdPagos ? (
-                    <BadgeStatus texto={`${qtdPagos} processo(s) pago(s)`} tom="sucesso" />
-                  ) : null}
-                  {qtdAbertos ? (
-                    <BadgeStatus texto={`${qtdAbertos} em tramitação`} tom="neutro" />
-                  ) : null}
-                </>
-              ) : cliente.status === "pago" ? (
-                <BadgeStatus texto="Já pago" tom="sucesso" />
+              {cliente.status === "pago" ? (
+                <BadgeStatus texto="JÁ PAGOS" tom="sucesso" />
+              ) : (
+                <BadgeStatus texto="CLIENTES" tom="neutro" />
+              )}
+              {qtdFinalizados ? (
+                <BadgeStatus texto={`${qtdFinalizados} processo(s) finalizado(s)`} tom="sucesso" />
               ) : null}
             </>
           }
@@ -234,9 +232,10 @@ function PerfilCliente() {
         perfil={perfil}
         visao={visao}
         visiveis={visiveis}
-        foraDaVisao={visao ? todos.length - daVisao.length : 0}
-        semVisao={Boolean(visao) && daVisao.length === 0}
+        foraDaVisao={0}
+        semVisao={false}
         valoresSemProcesso={valoresSemProcesso.length}
+        previstosSemProcesso={previstosSemProcesso}
         selecionado={selecionado}
         selecionar={(id) => ir({ registro: id, ...(visao ? { visao } : {}) })}
         trocarVisao={(v) => ir(v ? { visao: v } : {})}
@@ -247,6 +246,12 @@ function PerfilCliente() {
       {registroAtual ? (
         <BlocoInterno key={`${registroAtual.id}-interno`} registro={registroAtual} />
       ) : null}
+
+      <OutrosRegistrosFinanceiros
+        clienteId={cliente.id}
+        atendimentoId={registroAtual?.id ?? null}
+        parceria={(registroAtual as { parceria?: string | null } | null)?.parceria ?? null}
+      />
 
       {/* Processo selecionado: os valores ficam nos cards VALORES RECEBIDOS acima.
           Aqui só os valores sem processo (ou de cliente sem processo). */}
@@ -860,6 +865,7 @@ function SecaoProcessos({
   foraDaVisao,
   semVisao,
   valoresSemProcesso,
+  previstosSemProcesso,
   selecionado,
   selecionar,
   trocarVisao,
@@ -873,6 +879,8 @@ function SecaoProcessos({
   /** A visão pedida não tem processos (exibindo todos). */
   semVisao: boolean;
   valoresSemProcesso: number;
+  /** Valores previstos sem processo (aparecem na aba "Valores sem processo"). */
+  previstosSemProcesso: number;
   selecionado: string | null;
   selecionar: (id: string) => void;
   trocarVisao: (visao: Visao | undefined) => void;
@@ -883,14 +891,10 @@ function SecaoProcessos({
   const registro = perfil.registros.find((r) => r.id === selecionado) ?? null;
   const outra: Visao = visao === "pagos" ? "clientes" : "pagos";
 
-  const mutacaoCliente = useMutation({
-    mutationFn: (pago: boolean) => definirClientePago(cliente.id, pago),
-    onSuccess: async (_, pago) => {
-      await sincronizar(EVENTOS.CLIENTE_MARCADO_COMO_PAGO);
-      toast.success(pago ? "Cliente movido para JÁ PAGOS." : "Cliente voltou para CLIENTES.");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const temRecebimento = perfil.pagamentos.some(
+    (p) => Number(p.valor) > 0 && p.destinatario !== "cliente",
+  );
+  const naPaginaPagos = cliente.status === "pago";
 
   return (
     <Card className="gap-0 p-0">
@@ -926,34 +930,31 @@ function SecaoProcessos({
         </div>
       ) : null}
 
-      {perfil.registros.length === 0 ? (
-        <div className="flex flex-col gap-3 px-5 py-5 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-muted-foreground">
-            Cliente sem processo: a situação de pagamento é a do próprio cadastro (
-            {cliente.status === "pago" ? "JÁ PAGOS" : "CLIENTES"}).
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={mutacaoCliente.isPending || Boolean(cliente.deleted_at)}
-            onClick={() => mutacaoCliente.mutate(cliente.status !== "pago")}
-          >
-            {cliente.status === "pago" ? (
-              <>
-                <RotateCcw className="size-4" aria-hidden />
-                Voltar para CLIENTES
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="size-4" aria-hidden />
-                Marcar como pago
-              </>
-            )}
-          </Button>
-        </div>
+      <div
+        className={cn(
+          "flex flex-col gap-1 border-b border-border px-5 py-3 text-xs sm:flex-row sm:items-center sm:justify-between",
+          naPaginaPagos ? "bg-success/5" : "bg-muted/30",
+        )}
+        data-testid="pagina-cliente"
+      >
+        <p>
+          <span className="font-semibold">Página: {naPaginaPagos ? "JÁ PAGOS" : "CLIENTES"}</span>
+          <span className="text-muted-foreground">
+            {" "}
+            — {motivoDaPagina({ ...cliente, temRecebimento })}
+          </span>
+        </p>
+        <p className="text-muted-foreground">
+          Cliente Ricardo Friedl: <strong>{cliente.cliente_rf ? "sim" : "não"}</strong> ·
+          Recebimento confirmado: <strong>{temRecebimento ? "sim" : "não"}</strong>
+        </p>
+      </div>
+
+      {perfil.registros.length === 0 && !valoresSemProcesso && !previstosSemProcesso ? (
+        <p className="px-5 py-5 text-sm text-muted-foreground">Cliente sem processo cadastrado.</p>
       ) : null}
 
-      {visiveis.length || valoresSemProcesso ? (
+      {visiveis.length || valoresSemProcesso || previstosSemProcesso ? (
         <div
           role="tablist"
           aria-label="Processos do cliente"
@@ -983,13 +984,13 @@ function SecaoProcessos({
                   <span className="text-xs text-muted-foreground">{d.tipo_acao}</span>
                 ) : null}
                 <BadgeStatus
-                  texto={r.pago ? "Pago" : "Em tramitação"}
+                  texto={r.pago ? "Finalizado" : "Em andamento"}
                   tom={r.pago ? "sucesso" : "neutro"}
                 />
               </button>
             );
           })}
-          {valoresSemProcesso ? (
+          {valoresSemProcesso || previstosSemProcesso ? (
             <button
               type="button"
               role="tab"
@@ -1004,7 +1005,7 @@ function SecaoProcessos({
             >
               <span className="text-sm font-semibold">Valores sem processo</span>
               <span className="text-xs text-muted-foreground">
-                {valoresSemProcesso} valor(es) ainda não vinculado(s)
+                {valoresSemProcesso + previstosSemProcesso} valor(es) ainda não vinculado(s)
               </span>
             </button>
           ) : null}
@@ -1030,10 +1031,19 @@ function SecaoProcessos({
           />
         </>
       ) : selecionado === SEM_PROCESSO ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">
-          Valores recebidos que ainda não pertencem a nenhum processo. Eles não entram nos totais de
-          nenhum processo — vincule cada valor ao processo correto em “Valores recebidos”.
-        </p>
+        <>
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            Valores que ainda não pertencem a nenhum processo. Eles não entram nos totais de nenhum
+            processo — vincule cada valor ao processo correto.
+          </p>
+          <PrevistosSemProcesso
+            clienteId={cliente.id}
+            processos={perfil.registros.map((r) => ({
+              id: r.id,
+              numero: dadosDoRegistro(r).numero || null,
+            }))}
+          />
+        </>
       ) : null}
     </Card>
   );
@@ -1072,8 +1082,8 @@ function ProcessoSelecionado({
       await sincronizar(EVENTOS.CLIENTE_MARCADO_COMO_PAGO);
       toast.success(
         pago
-          ? `Processo ${d.numero || "sem número"} movido para JÁ PAGOS. Os demais processos não foram alterados.`
-          : `Processo ${d.numero || "sem número"} voltou para CLIENTES.`,
+          ? `Processo ${d.numero || "sem número"} marcado como finalizado (todos os valores recebidos).`
+          : `Processo ${d.numero || "sem número"} voltou para pendente.`,
       );
     },
     onError: (e: Error) => toast.error(e.message, { duration: 12_000 }),
@@ -1115,8 +1125,8 @@ function ProcessoSelecionado({
               <BadgeStatus
                 texto={
                   r.pago
-                    ? `Pago${r.pago_em ? ` em ${formatDate(r.pago_em)}` : ""} · JÁ PAGOS`
-                    : "Em tramitação · CLIENTES"
+                    ? `Finalizado${r.pago_em ? ` em ${formatDate(r.pago_em)}` : ""}`
+                    : "Valores pendentes"
                 }
                 tom={r.pago ? "sucesso" : "neutro"}
               />
@@ -1159,12 +1169,12 @@ function ProcessoSelecionado({
             {r.pago ? (
               <>
                 <RotateCcw className="size-4" aria-hidden />
-                Voltar para CLIENTES
+                Reabrir processo
               </>
             ) : (
               <>
                 <CheckCircle2 className="size-4" aria-hidden />
-                Marcar processo como pago
+                Marcar processo como finalizado
               </>
             )}
           </Button>
@@ -1377,13 +1387,7 @@ function BlocoValoresRecebidos({
         {pagamentos.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nenhum valor recebido registrado
-            {registro
-              ? registro.pago
-                ? " para este processo — ele está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido neste processo” para informar os valores."
-                : " para este processo."
-              : perfil.cliente.status === "pago"
-                ? " — o cliente está em JÁ PAGOS sem valor informado. Use “Lançar valor recebido” para informar os valores."
-                : "."}
+            {registro ? " para este processo." : "."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -1468,7 +1472,7 @@ function VincularProcesso({
         {registros.map((r) => (
           <SelectItem key={r.id} value={r.id}>
             {rotuloRegistro(r)}
-            {r.pago ? " (pago)" : ""}
+            {r.pago ? " (finalizado)" : ""}
           </SelectItem>
         ))}
       </SelectContent>

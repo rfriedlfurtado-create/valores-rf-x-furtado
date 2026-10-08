@@ -54,6 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBRL, formatDate } from "@/lib/format";
 import {
   carregarBaseIdentificacao,
+  criarClientesValores,
   gravarRecebimentos,
   registrarResumoRecebimentos,
   ROTULO_RESULTADO,
@@ -132,7 +133,9 @@ function ImportarRecebimentos() {
   const [resultados, setResultados] = useState<LinhaResultado[]>([]);
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
-  const [relatorio, setRelatorio] = useState<ReturnType<typeof resumirPrevia> | null>(null);
+  const [relatorio, setRelatorio] = useState<
+    (ReturnType<typeof resumirPrevia> & { clientesCriados?: number }) | null
+  >(null);
   /** Modelo em BLOCOS (VALORES PRI EXECUÇÃO): fluxo próprio. */
   const [blocos, setBlocos] = useState<{
     arquivo: string;
@@ -300,31 +303,71 @@ function ImportarRecebimentos() {
         .filter((x) => x.ident && x.ident.status !== "encontrado"),
     [planilha, identificacoes],
   );
+  /** Não encontrados na base: serão criados em CLIENTES ao confirmar. */
+  const aCriar = useMemo(
+    () => revisao.filter((x) => x.ident.status === "nao_encontrado" && x.l.reclamante.trim()),
+    [revisao],
+  );
+  const qtdACriar = useMemo(
+    () => new Set(aCriar.map(({ l }) => l.cpf_digitos || l.nome_normalizado)).size,
+    [aCriar],
+  );
 
   async function confirmar() {
-    if (!planilha || !resumo) return;
+    if (!planilha || !resumo || !base) return;
     setEtapa("gravando");
     setProgresso(0);
     try {
+      let ids = identificacoes;
+      let its = itens;
+      let statusPorId = new Map(base.clientes.map((c) => [c.id, c.status]));
+      let criados = 0;
+      // Clientes que não existem: criados em CLIENTES (sem identificação RF) e
+      // identificados de novo antes de gravar os valores.
+      if (aCriar.length) {
+        const r = await criarClientesValores(
+          aCriar.map(({ l }) => ({
+            ref: String(l.linha),
+            nome: l.reclamante,
+            nome_normalizado: l.nome_normalizado,
+            cpf: l.cpf,
+          })),
+          arquivo,
+        );
+        criados = new Set(r.filter((x) => x.criado).map((x) => x.cliente_id)).size;
+        const b2 = await carregarBaseIdentificacao();
+        const ind = indexarClientes(b2.clientes, b2.variacoes);
+        ids = new Map(
+          planilha.linhas.map((l) => [l.linha, identificarLinha(l, ind, vinculos.get(l.linha))]),
+        );
+        its = montarItens(planilha.linhas, ids, b2.processos, classificacoes, arquivo, escolhidos);
+        statusPorId = new Map(b2.clientes.map((c) => [c.id, c.status]));
+      }
       const { importacaoId, linhas } = await gravarRecebimentos(
-        itens,
+        its,
         arquivo,
         planilha.aba,
         (feitos, total) => setProgresso(Math.round((feitos / total) * 100)),
       );
-      const final = resumirPrevia({
-        linhas: planilha.linhas,
-        pendentes: planilha.pendentes.length,
-        identificacoes,
-        itens,
-        resultados: linhas,
-        statusCliente: (id) => clientePorId.get(id)?.status,
-      });
+      const final = {
+        ...resumirPrevia({
+          linhas: planilha.linhas,
+          pendentes: planilha.pendentes.length,
+          identificacoes: ids,
+          itens: its,
+          resultados: linhas,
+          statusCliente: (id) => statusPorId.get(id),
+        }),
+        clientesCriados: criados,
+      };
+      const revisaoFinal = planilha.linhas
+        .map((l) => ({ l, ident: ids.get(l.linha)! }))
+        .filter((x) => x.ident && x.ident.status !== "encontrado");
       if (importacaoId)
         await registrarResumoRecebimentos(
           importacaoId,
           final,
-          revisao.map(({ l, ident }) => ({
+          revisaoFinal.map(({ l, ident }) => ({
             linha: l.linha,
             reclamante: l.reclamante,
             motivo: ROTULO_IDENTIFICACAO[ident.status],
@@ -333,11 +376,12 @@ function ImportarRecebimentos() {
       await sincronizar(EVENTOS.IMPORTACAO_CONCLUIDA);
       toast.success(
         `Importação concluída: ${final.valoresNovos} valor(es) registrado(s)` +
+          (criados ? `, ${criados} cliente(s) criado(s) em CLIENTES` : "") +
           (final.clientesMovidos
-            ? `, ${final.clientesMovidos} cliente(s) sem processo movido(s) para JÁ PAGOS.`
-            : ". Os processos só vão para JÁ PAGOS quando os três cards estiverem completos."),
+            ? `, ${final.clientesMovidos} cliente(s) Ricardo Friedl movido(s) para JÁ PAGOS.`
+            : "."),
       );
-      if (revisao.length === 0 && planilha.pendentes.length === 0) {
+      if (revisaoFinal.length === 0 && planilha.pendentes.length === 0) {
         // Sucesso sem pendências: fecha a importação e mostra CLIENTES.
         void navigate({ to: "/clientes" });
         return;
@@ -440,8 +484,8 @@ function ImportarRecebimentos() {
                 manualmente, no perfil do cliente.
               </li>
               <li>
-                O cliente é localizado na base pelo CPF ou pelo nome idêntico. Nenhum cliente novo é
-                criado; quem não for encontrado fica para revisão.
+                O cliente é localizado na base (CLIENTES e JÁ PAGOS) pelo CPF ou pelo nome idêntico.
+                Quem não existe é criado em CLIENTES; nomes apenas parecidos ficam para revisão.
               </li>
               <li>
                 Cada valor vira um recebimento próprio — várias linhas do mesmo cliente = um perfil.
@@ -451,13 +495,17 @@ function ImportarRecebimentos() {
                 <strong className="text-foreground">Também aceito:</strong> a planilha em blocos
                 “VALORES PRI EXECUÇÃO” (abas RPV E PRECATÓRIO, IMPLANTAÇÃO JUDICIAL e IMPLANTAÇÃO
                 ADMINISTRATIVA) — reconhecida automaticamente. Nela, cliente não cadastrado é criado
-                em JÁ PAGOS e valores não confirmados vão para VALORES PREVISTOS.
+                em CLIENTES e valores não confirmados ficam como valores previstos no perfil.
               </li>
               <li>
                 Os valores vão para o PROCESSO da linha (pela Pasta ou Número, ou o único processo
-                do cliente). A importação não finaliza o processo: ele só vai para JÁ PAGOS quando
-                Atrasados, Contratual e Sucumbência estiverem resolvidos. Cliente com vários
-                processos: escolha o processo na prévia.
+                do cliente). Cliente com vários processos: escolha o processo na prévia.
+              </li>
+              <li>
+                <strong className="text-foreground">JÁ PAGOS:</strong> o cliente só vai para JÁ
+                PAGOS quando é cliente Ricardo Friedl (importação CLIENTES RICARDO FRIEDL) e tem
+                pelo menos um recebimento confirmado. Esta importação, sozinha, não identifica
+                ninguém como cliente Ricardo Friedl.
               </li>
             </ul>
           </Card>
@@ -530,7 +578,7 @@ function ImportarRecebimentos() {
               tom="info"
               descricao={`${
                 resumo.clientesMovidos
-                  ? `${resumo.clientesMovidos} cliente(s) sem processo vão para JÁ PAGOS`
+                  ? `${resumo.clientesMovidos} cliente(s) Ricardo Friedl vão para JÁ PAGOS`
                   : "Valores vão para os cards do processo"
               }${aEscolher ? ` · ${aEscolher} linha(s): escolha o processo` : ""}`}
             />
@@ -563,7 +611,11 @@ function ImportarRecebimentos() {
               valor={resumo.revisao}
               icone={AlertTriangle}
               tom={resumo.revisao ? "warning" : "neutro"}
-              descricao="Cliente não encontrado ou ambíguo"
+              descricao={
+                qtdACriar
+                  ? `${qtdACriar} cliente(s) não cadastrado(s) serão criados em CLIENTES ao confirmar`
+                  : "Cliente ambíguo ou com CPF divergente"
+              }
             />
             <StatCard
               titulo="Sem categoria"
@@ -684,8 +736,11 @@ function ImportarRecebimentos() {
               <p className="text-sm text-muted-foreground">
                 {relatorio.valoresNovos} valor(es) registrado(s) · total{" "}
                 {formatBRL(relatorio.totalNovo)} ·{" "}
+                {relatorio.clientesCriados
+                  ? `${relatorio.clientesCriados} cliente(s) criado(s) em CLIENTES · `
+                  : ""}
                 {relatorio.clientesMovidos
-                  ? `${relatorio.clientesMovidos} cliente(s) sem processo movido(s) para JÁ PAGOS · `
+                  ? `${relatorio.clientesMovidos} cliente(s) Ricardo Friedl movido(s) para JÁ PAGOS · `
                   : ""}
                 {relatorio.valoresJaRegistrados} já registrado(s)
                 {relatorio.clientesSemValor
@@ -834,7 +889,8 @@ function TabelaValores({
                   {r ? (
                     <BadgeStatus
                       texto={
-                        ROTULO_RESULTADO[r.resultado] + (r.movido ? " · vai para JÁ PAGOS" : "")
+                        ROTULO_RESULTADO[r.resultado] +
+                        (r.movido ? " · cliente vai para JÁ PAGOS" : "")
                       }
                       tom={TOM_RESULTADO[r.resultado]}
                     />

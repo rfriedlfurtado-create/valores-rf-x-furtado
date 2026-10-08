@@ -264,8 +264,8 @@ function ImportarClientes() {
         </Link>
       </Button>
       <PageHeader
-        titulo="Importar clientes"
-        descricao="Modelo oficial: planilha “CLIENTES RF - ESPAIDER” (22 colunas). Somente “Reclamante” é obrigatório."
+        titulo="CLIENTES RICARDO FRIEDL"
+        descricao="Planilha “CLIENTES RF - ESPAIDER” (22 colunas; somente “Reclamante” é obrigatório). Identifica cada cliente como cliente do Ricardo Friedl — ele vai para JÁ PAGOS apenas quando também tiver recebimento confirmado."
       >
         <Button asChild variant="outline">
           <a href={ARQUIVO_MODELO} download>

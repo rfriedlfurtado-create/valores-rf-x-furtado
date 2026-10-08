@@ -120,7 +120,7 @@ export const ROTULO_RESULTADO: Record<ResultadoRecebimento, string> = {
   cliente_indisponivel: "Cliente indisponível",
   valor_invalido: "Valor inválido",
   marcado_pago: "Sem valor — lançar no perfil",
-  ja_pago: "Sem valor — processo já estava em JÁ PAGOS",
+  ja_pago: "Sem valor — lançar no perfil",
   processo_nao_definido: "Escolha o processo",
   sem_valor: "Sem valor — lançar no perfil",
   conflito_nao_havera: "Não lançado: processo marcado “Não haverá sucumbência”",
@@ -163,6 +163,27 @@ export async function simularRecebimentos(
   const out: LinhaResultado[] = [];
   for (const bloco of partes(itens, 1500))
     out.push(...(await chamar(bloco, arquivo, aba, true, null)).linhas);
+  return out;
+}
+
+/**
+ * Clientes da planilha de valores que não existem na base: o banco procura de
+ * novo (CPF > nome completo idêntico) e só cria quando não encontra — sempre
+ * em CLIENTES e SEM identificação de cliente Ricardo Friedl.
+ */
+export async function criarClientesValores(
+  clientes: { ref: string; nome: string; nome_normalizado: string; cpf: string | null }[],
+  arquivo: string,
+): Promise<{ ref: string; cliente_id: string; criado: boolean }[]> {
+  const out: { ref: string; cliente_id: string; criado: boolean }[] = [];
+  for (const bloco of partes(clientes, 50)) {
+    const { data, error } = await db.rpc("criar_clientes_valores", {
+      p_clientes: bloco,
+      p_arquivo: arquivo,
+    });
+    if (error) falha(error.message);
+    out.push(...((data ?? []) as { ref: string; cliente_id: string; criado: boolean }[]));
+  }
   return out;
 }
 

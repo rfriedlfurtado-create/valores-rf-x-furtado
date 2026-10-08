@@ -126,11 +126,7 @@ function JaPagos() {
     <div>
       <PageHeader
         titulo="Já pagos"
-        descricao={`${base.indicadores.jaPagos} cliente(s) com ${base.indicadores.processosPagos} processo(s) pago(s). O pagamento é marcado por processo: os processos ainda em tramitação do mesmo cliente continuam em CLIENTES${
-          base.indicadores.pagosSemValor
-            ? ` · ${base.indicadores.pagosSemValor} sem valor informado`
-            : ""
-        }.`}
+        descricao={`${base.indicadores.jaPagos} cliente(s) do Ricardo Friedl com pelo menos um recebimento confirmado. Estar aqui não significa quitação integral — saldos e categorias pendentes aparecem no perfil.`}
       >
         <BotaoImportarClientes />
       </PageHeader>
@@ -171,7 +167,7 @@ function JaPagos() {
           descricao={
             busca
               ? "Nenhum resultado para a pesquisa atual."
-              : "Quando um nome importado na seção 2 corresponder a um cliente em tramitação, ele aparecerá aqui automaticamente."
+              : "Um cliente aparece aqui quando é cliente do Ricardo Friedl e tem pelo menos um recebimento confirmado."
           }
         />
       ) : (
@@ -184,7 +180,7 @@ function JaPagos() {
                 <TableHead className="min-w-56">Processos pagos</TableHead>
                 <TableHead className="text-right">Total recebido</TableHead>
                 <TableHead className="text-center">Pagamentos</TableHead>
-                <TableHead>Pago em</TableHead>
+                <TableHead>Último recebimento</TableHead>
                 <TableHead>Cadastro</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>

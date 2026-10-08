@@ -58,15 +58,18 @@ export function situacaoDoCliente(cliente: ClienteMinimo): Situacao {
 }
 
 // ---------------------------------------------------------------------------
-// Pagamento POR PROCESSO
+// Página do cliente: CLIENTES ou JÁ PAGOS (exclusivas)
 // ---------------------------------------------------------------------------
 //
-// Cada processo (atendimento) tem a sua situação (`atendimentos.pago`).
-// O cliente aparece:
-//   * em CLIENTES  se tiver ao menos um processo NÃO pago;
-//   * em JÁ PAGOS  se tiver ao menos um processo PAGO;
-// podendo estar nas duas visões ao mesmo tempo, sempre com o MESMO cadastro.
-// Cliente sem processo segue a situação do próprio cadastro (status).
+// O cliente aparece em JÁ PAGOS somente quando reúne as DUAS condições:
+//   1. é cliente do RICARDO FRIEDL (importação CLIENTES RICARDO FRIEDL);
+//   2. tem pelo menos um recebimento CONFIRMADO (valores previstos/pendentes
+//      não contam).
+// Caso contrário fica em CLIENTES. A regra é aplicada no banco
+// (`_sincronizar_status_cliente`, gatilhos) e gravada em `clientes.status`;
+// o resultado não depende da ordem das importações. Estar em JÁ PAGOS não
+// significa quitação integral: saldos e categorias pendentes aparecem no perfil.
+// `atendimentos.pago` indica apenas "processo finalizado" e não muda a página.
 
 export interface ProcessoMinimo {
   id: string;
@@ -77,40 +80,45 @@ interface ClienteComProcessos extends ClienteMinimo {
   processos?: readonly ProcessoMinimo[];
 }
 
-/** Processos exibidos em cada visão. */
+/** Processos exibidos em cada página: todos (a página é do cliente, não do processo). */
 export function processosDaVisao<P extends ProcessoMinimo>(
   processos: readonly P[],
-  visao: "clientes" | "pagos",
+  _visao?: "clientes" | "pagos",
 ): P[] {
-  return processos.filter((p) => (visao === "pagos" ? p.pago : !p.pago));
+  return [...processos];
 }
 
-export function estaEmTramitacao(c: ClienteComProcessos): boolean {
-  if (situacaoDoCliente(c) === "ARQUIVADO") return false;
-  if (c.processos?.length) return c.processos.some((p) => !p.pago);
+export function estaEmTramitacao(c: ClienteMinimo): boolean {
   return situacaoDoCliente(c) === "EM_TRAMITACAO";
 }
 
-export function estaPago(c: ClienteComProcessos): boolean {
-  if (situacaoDoCliente(c) === "ARQUIVADO") return false;
-  if (c.processos?.length) return c.processos.some((p) => p.pago);
+export function estaPago(c: ClienteMinimo): boolean {
   return situacaoDoCliente(c) === "PAGO";
 }
 
-/**
- * Entradas que pertencem à visão JÁ PAGOS: as dos processos pagos (cliente
- * com processos) ou todas (cliente sem processo e pago). Valores de processos
- * diferentes nunca se misturam.
- */
+/** Condições da página JÁ PAGOS (para explicar no perfil). */
+export function motivoDaPagina(c: {
+  cliente_rf?: boolean | null;
+  status: string;
+  deleted_at?: string | null;
+  arquivado?: boolean;
+  temRecebimento: boolean;
+}): string {
+  if (estaPago(c)) return "Cliente Ricardo Friedl com recebimento confirmado.";
+  if (situacaoDoCliente(c) === "ARQUIVADO") return "Cliente arquivado.";
+  if (!c.cliente_rf && !c.temRecebimento)
+    return "Não identificado como cliente Ricardo Friedl e sem recebimento confirmado.";
+  if (!c.cliente_rf)
+    return "Tem recebimento, mas não está identificado como cliente Ricardo Friedl.";
+  return "Cliente Ricardo Friedl ainda sem recebimento confirmado.";
+}
+
+/** Entradas que entram nos totais de JÁ PAGOS: todas as do cliente que está em JÁ PAGOS. */
 export function entradasDosPagos<E extends EntradaMinima>(
   c: ClienteComProcessos,
   entradas: readonly E[],
 ): E[] {
-  if (c.processos?.length) {
-    const pagos = new Set(c.processos.filter((p) => p.pago).map((p) => p.id));
-    return entradas.filter((e) => e.atendimento_id && pagos.has(e.atendimento_id));
-  }
-  return situacaoDoCliente(c) === "PAGO" ? [...entradas] : [];
+  return estaPago(c) ? [...entradas] : [];
 }
 /** Cliente que participa de contagens e totais (não arquivado/excluído). */
 export const estaVigente = (c: ClienteMinimo) => situacaoDoCliente(c) !== "ARQUIVADO";
@@ -176,6 +184,8 @@ export interface EntradaMinima {
   classificacao: ClassificacaoEntrada | null;
   /** Processo ao qual o valor pertence (null = sem processo). */
   atendimento_id?: string | null;
+  /** 'cliente' = pago diretamente ao cliente (fora do valor recebido pelo escritório). */
+  destinatario?: string | null;
 }
 
 export type GrupoClassificacao = ClassificacaoEntrada | "sem_classificacao";
@@ -228,13 +238,13 @@ export function resumirEntradas(entradas: readonly EntradaMinima[]): ResumoEntra
 }
 
 export interface Indicadores {
-  /** Clientes vigentes (cada cliente conta uma vez, mesmo com processos nas duas visões). */
+  /** Clientes vigentes (cada cliente conta uma vez). */
   totalClientes: number;
-  /** Clientes com ao menos um processo em tramitação. */
+  /** Clientes na página CLIENTES. */
   emTramitacao: number;
-  /** Clientes com ao menos um processo pago. */
+  /** Clientes na página JÁ PAGOS (cliente RF + recebimento confirmado). */
   jaPagos: number;
-  /** Processos pagos / em tramitação (clientes sem processo contam como 1). */
+  /** Processos finalizados / não finalizados (clientes sem processo contam como 1). */
   processosPagos: number;
   processosEmTramitacao: number;
   /** % de clientes vigentes que já pagaram (0–100). */
@@ -242,9 +252,9 @@ export interface Indicadores {
   /** Soma dos valores efetivamente registrados (clientes vigentes). */
   valorRecebido: number;
   quantidadePagamentos: number;
-  /** Clientes em JÁ PAGOS sem nenhum valor registrado nos processos pagos. */
+  /** Clientes em JÁ PAGOS sem valor registrado (não ocorre pela regra atual). */
   pagosSemValor: number;
-  /** Soma dos valores registrados nos processos pagos. */
+  /** Soma dos valores registrados dos clientes em JÁ PAGOS. */
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
@@ -279,7 +289,10 @@ export function calcularIndicadores(
   for (const cliente of clientes) {
     const situacao = situacaoDoCliente(cliente);
     if (situacao === "ARQUIVADO") continue;
-    const valores = entradasPorCliente.get(cliente.id) ?? [];
+    // Valor recebido = recebimentos do ESCRITÓRIO (pago ao cliente fica de fora).
+    const valores = (entradasPorCliente.get(cliente.id) ?? []).filter(
+      (e) => e.destinatario !== "cliente",
+    );
     const soma = valores.reduce((s, e) => s + e.valor, 0);
     todasEntradas.push(...valores);
     if (valores.length > 1) clientesComVariasEntradas += 1;

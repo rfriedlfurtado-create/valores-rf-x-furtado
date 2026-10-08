@@ -18,16 +18,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filtrarJaPagos, useSistema } from "@/hooks/useSistema";
 import { useQuery } from "@tanstack/react-query";
-import { FiltroEscritorioSelect } from "@/components/FiltroEscritorioSelect";
 import {
-  clientePassaFiltro,
-  registroPassaFiltro,
-  useFiltroEscritorio,
-  useVinculosEscritorio,
-} from "@/lib/escritorio";
-import { cobrancasQuery, lancamentosQuery } from "@/lib/furtado/consultas";
-import { CATEGORIAS_HONORARIOS } from "@/lib/furtado/modelo";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cobrancasQuery } from "@/lib/furtado/consultas";
 import { calcularIndicadores } from "@/lib/situacao";
+import { saldoPrevisto, valoresPrevistosQuery } from "@/lib/valoresPrevistos";
 import { ClipboardList, Landmark } from "lucide-react";
 import { formatBRL, formatPercent } from "@/lib/format";
 import {
@@ -57,35 +57,55 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+type FiltroRF = "todos" | "rf";
+
+const CHAVE_FILTRO_RF = "dashboard:filtro-rf";
+
+function lerFiltroRF(): FiltroRF {
+  try {
+    return localStorage.getItem(CHAVE_FILTRO_RF) === "rf" ? "rf" : "todos";
+  } catch {
+    return "todos";
+  }
+}
+
 function Dashboard() {
   const { base, correspondencias, carregando } = useSistema();
-  const { filtro } = useFiltroEscritorio();
-  const vinculos = useVinculosEscritorio();
-  const lancamentos = useQuery(lancamentosQuery());
+  const previstos = useQuery(valoresPrevistosQuery());
   const cobrancas = useQuery(cobrancasQuery());
   const [selecionado, setSelecionado] = useState<CorrespondenciaDetalhada | null>(null);
+  const [filtroRF, setFiltroRFEstado] = useState<FiltroRF>(lerFiltroRF);
+  const setFiltroRF = (v: FiltroRF) => {
+    setFiltroRFEstado(v);
+    try {
+      localStorage.setItem(CHAVE_FILTRO_RF, v);
+    } catch {
+      /* preferência só desta sessão */
+    }
+  };
 
-  // Indicadores no escritório escolhido: cada cliente conta uma única vez.
+  /** Cliente que entra no dashboard: pela identificação do cadastro, não pela página. */
+  const incluido = useMemo(() => {
+    if (!base) return () => false;
+    return (clienteId: string) => {
+      const c = base.porId.get(clienteId);
+      return Boolean(c) && (filtroRF === "todos" || Boolean(c!.cliente_rf));
+    };
+  }, [base, filtroRF]);
+
+  // Indicadores (cada cliente conta uma única vez) no filtro escolhido.
   const indFiltrado = useMemo(() => {
     if (!base) return null;
-    if (filtro === "todos") return base.indicadores;
-    const clientes = base.clientes.filter((c) => clientePassaFiltro(c, filtro, vinculos));
+    if (filtroRF === "todos") return base.indicadores;
+    const clientes = base.clientes.filter((c) => c.cliente_rf);
     return calcularIndicadores(clientes, base.pagamentosPorCliente);
-  }, [base, filtro, vinculos]);
+  }, [base, filtroRF]);
 
   const extras = useMemo(() => {
     if (!base) return { aReceber: 0, qtdAReceber: 0, saldoCobrancas: 0, cobrancasAbertas: 0 };
-    const vigente = (id: string) => base.porId.has(id);
-    const principais = (lancamentos.data ?? []).filter(
-      (l) =>
-        l.versao === 1 &&
-        vigente(l.cliente_id) &&
-        CATEGORIAS_HONORARIOS.includes(l.categoria) &&
-        l.valor !== null &&
-        !l.pagamento_id &&
-        l.natureza !== "informativo" &&
-        !(l.observacao ?? "").includes("Valor alternativo") &&
-        registroPassaFiltro(l.escritorio, filtro),
+    const vigente = incluido;
+    const principais = (previstos.data ?? []).filter(
+      (v) => vigente(v.cliente_id) && saldoPrevisto(v) > 0,
     );
     const parcelasPorCob = new Map<string, { valor: number; valor_pago: number }[]>();
     for (const p of cobrancas.data?.parcelas ?? [])
@@ -93,12 +113,7 @@ function Dashboard() {
     let saldo = 0;
     let abertas = 0;
     for (const c of cobrancas.data?.cobrancas ?? []) {
-      if (
-        !vigente(c.cliente_id) ||
-        !registroPassaFiltro(c.escritorio, filtro) ||
-        c.situacao === "quitada"
-      )
-        continue;
+      if (!vigente(c.cliente_id) || c.situacao === "quitada") continue;
       abertas++;
       const ps = parcelasPorCob.get(c.id);
       saldo += ps?.length
@@ -106,18 +121,21 @@ function Dashboard() {
         : (c.valor_contratado ?? 0);
     }
     return {
-      aReceber: Math.round(principais.reduce((s, l) => s + (l.valor ?? 0), 0) * 100) / 100,
+      aReceber: Math.round(principais.reduce((s, v) => s + saldoPrevisto(v), 0) * 100) / 100,
       qtdAReceber: principais.length,
       saldoCobrancas: Math.round(saldo * 100) / 100,
       cobrancasAbertas: abertas,
     };
-  }, [base, lancamentos.data, cobrancas.data, filtro]);
+  }, [base, previstos.data, cobrancas.data, incluido]);
 
   // Correspondências de nomes (alertas de similaridade) — NÃO confundir com
   // a situação PAGO do cliente, que vem de base.indicadores.jaPagos.
   const pendentes = useMemo(
-    () => correspondencias.filter((item) => item.correspondencia.status === "pendente"),
-    [correspondencias],
+    () =>
+      correspondencias.filter(
+        (item) => item.correspondencia.status === "pendente" && incluido(item.clienteEncontrado.id),
+      ),
+    [correspondencias, incluido],
   );
   const pendentesComHistorico = useMemo(() => filtrarJaPagos(pendentes), [pendentes]);
 
@@ -147,25 +165,36 @@ function Dashboard() {
         titulo="Dashboard"
         descricao="Panorama da base histórica e das correspondências encontradas."
       >
-        <FiltroEscritorioSelect className="h-10" />
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Clientes Ricardo Friedl
+          </span>
+          <Select value={filtroRF} onValueChange={(v) => setFiltroRF(v as FiltroRF)}>
+            <SelectTrigger className="h-10 w-64" aria-label="Clientes Ricardo Friedl">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os clientes</SelectItem>
+              <SelectItem value="rf">Somente clientes Ricardo Friedl</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
-          titulo="Em tramitação"
+          titulo="Clientes"
           valor={ind.emTramitacao}
           icone={Users}
           tom="info"
-          descricao="Clientes na página Clientes"
+          descricao="Clientes na página CLIENTES"
         />
         <StatCard
           titulo="Já pagos"
           valor={ind.jaPagos}
           icone={Wallet}
           tom="money"
-          descricao={`${formatPercent(ind.percentualPagos)} da base${
-            ind.pagosSemValor ? ` · ${ind.pagosSemValor} sem valor informado` : ""
-          }`}
+          descricao={`${formatPercent(ind.percentualPagos)} da base · cliente RF com recebimento confirmado`}
         />
         <StatCard
           titulo="Total de clientes"
@@ -187,11 +216,11 @@ function Dashboard() {
           tom="info"
         />
         <StatCard
-          titulo="Honorários a receber (informados)"
+          titulo="Valores previstos (a receber)"
           valor={formatBRL(extras.aReceber)}
           icone={Landmark}
           tom="info"
-          descricao={`${extras.qtdAReceber} valor(es) previstos/devidos na planilha, ainda não confirmados`}
+          descricao={`${extras.qtdAReceber} valor(es) a receber ou sem confirmação — fora do valor recebido`}
         />
         <StatCard
           titulo="Cobranças em aberto"
@@ -277,7 +306,7 @@ function DistribuicaoSituacao({
       <div
         className="flex h-4 w-full overflow-hidden rounded-full bg-muted"
         role="img"
-        aria-label={`${emTramitacao} em tramitação, ${jaPagos} já pagos`}
+        aria-label={`${emTramitacao} em CLIENTES, ${jaPagos} em JÁ PAGOS`}
       >
         <div className="h-full bg-info" style={{ width: `${100 - pctPagos}%` }} />
         <div className="h-full bg-money" style={{ width: `${pctPagos}%` }} />
@@ -285,7 +314,7 @@ function DistribuicaoSituacao({
       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span className="flex items-center gap-2">
           <span className="size-2.5 rounded-full bg-info" aria-hidden />
-          Em tramitação <strong className="tabular">{emTramitacao}</strong>
+          Clientes <strong className="tabular">{emTramitacao}</strong>
           <span className="text-muted-foreground">
             ({formatPercent(total ? 100 - pctPagos : 0)})
           </span>

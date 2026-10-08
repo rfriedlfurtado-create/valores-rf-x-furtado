@@ -3,7 +3,8 @@
  * montagem dos recebimentos enviados ao banco (funções puras — testadas em
  * tests/importacao-recebimentos.test.ts).
  *
- * Regras (nunca cria cliente, nunca vincula por semelhança):
+ * Regras (identificação; o cliente que não existe é criado à parte, em
+ * CLIENTES, por criar_clientes_valores — nunca vincula por semelhança):
  *  1. CPF válido na planilha → cliente com o mesmo CPF.
  *  2. Sem CPF (ou CPF sem cadastro) → Reclamante idêntico após normalização
  *     (maiúsculas, acentos, espaços e pontuação) ao nome do cliente ou a uma
@@ -350,7 +351,7 @@ export interface ResumoPrevia {
   linhas: number;
   valores: number;
   clientesIdentificados: number;
-  /** Processos (ou clientes sem processo) que vão para JÁ PAGOS. */
+  /** Clientes Ricardo Friedl que passam para JÁ PAGOS (primeiro recebimento confirmado). */
   clientesMovidos: number;
   clientesJaPagos: number;
   /** Linhas sem valor com cliente identificado (valor a lançar no perfil). */
@@ -395,8 +396,8 @@ export function resumirPrevia(params: {
       if (!i.classificacao) semCat += 1;
     } else if (r?.resultado === "ja_registrado") jaReg += 1;
     else if (r?.resultado === "possivel_duplicado") dup += 1;
-    // Pagamento por processo: conta cada PROCESSO movido (cliente sem processo = 1).
-    if (r?.movido) movidos.add(`${i.cliente_id}|${i.atendimento_id ?? ""}`);
+    // Cliente (Ricardo Friedl) que passa para JÁ PAGOS com este recebimento.
+    if (r?.movido) movidos.add(i.cliente_id);
   }
   for (const id of clientes) if (params.statusCliente(id) === "pago") jaPagos.add(id);
   let revisao = 0;
