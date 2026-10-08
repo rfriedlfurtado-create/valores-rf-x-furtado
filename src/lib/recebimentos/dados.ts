@@ -40,6 +40,17 @@ export interface BaseIdentificacao {
   processos: ProcessoBase[];
 }
 
+/** NB guardado no processo (campos "NB"/"nb" dos dados ou informações adicionais). */
+function nbDoRegistro(a: any): string | null {
+  for (const fonte of [a.dados_rf ?? {}, a.informacoes_adicionais ?? {}])
+    for (const [k, v] of Object.entries(fonte as Record<string, unknown>))
+      if (/^nb\b|n[uú]mero do benef/i.test(k) && typeof v === "string") {
+        const d = somenteDigitos(v);
+        if (d.length >= 9) return d;
+      }
+  return null;
+}
+
 /** Lê a base atual (sempre do banco, sem cache) para identificar os clientes. */
 export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
   const [clientes, variacoes, atendimentos] = await Promise.all([
@@ -57,7 +68,9 @@ export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
     todas<any>((de, ate) =>
       db
         .from("atendimentos")
-        .select("id,cliente_id,processo_digitos,numero_processo,servico,dados_rf,pago")
+        .select(
+          "id,cliente_id,processo_digitos,numero_processo,servico,dados_rf,informacoes_adicionais,pago",
+        )
         .is("deleted_at", null)
         .order("id")
         .range(de, ate),
@@ -72,6 +85,7 @@ export async function carregarBaseIdentificacao(): Promise<BaseIdentificacao> {
     numero: a.dados_rf?.numero || a.numero_processo || null,
     tipo_acao: a.dados_rf?.tipo_acao || a.servico || null,
     pago: Boolean(a.pago),
+    nb_digitos: nbDoRegistro(a),
   }));
   return { clientes, variacoes, processos };
 }

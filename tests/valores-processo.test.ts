@@ -140,7 +140,7 @@ describe("cards por processo", () => {
     const v = valoresDoProcesso(pags, parcial, "A");
     expect(v.podeFinalizar).toBe(false);
     expect(v.pendencias.map((p) => p.replace(/\u00a0/g, " "))).toEqual([
-      "Implantação (recebimento parcial — falta confirmar o recebimento integral; saldo pendente R$ 400,00)",
+      "Contratual (recebimento parcial — falta confirmar o recebimento integral; saldo pendente R$ 400,00)",
     ]);
   });
 

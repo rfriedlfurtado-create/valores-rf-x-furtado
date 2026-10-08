@@ -112,12 +112,12 @@ export interface NovoPagamento {
   usuario_cadastro?: string | null;
   /** Processo/atendimento ao qual o pagamento pertence (opcional). */
   atendimento_id?: string | null;
-  /** Implantação, Sucumbência, Atrasados... (opcional). */
+  /** Atrasados, Contratual (implantação), Sucumbência... (opcional). */
   classificacao?: ClassificacaoEntrada | null;
 }
 
 /**
- * Classifica UMA entrada financeira (Atrasados/Implantação/Sucumbência).
+ * Classifica UMA entrada financeira (Atrasados/Contratual/Sucumbência).
  * Só muda a classificação daquela entrada: o valor nunca é duplicado nem
  * alterado, e as demais entradas do cliente não são tocadas.
  */

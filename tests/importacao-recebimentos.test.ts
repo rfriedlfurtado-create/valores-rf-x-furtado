@@ -52,17 +52,13 @@ const CLIENTES: ClienteBase[] = [
 const indice = indexarClientes(CLIENTES, [{ cliente_id: "joao", nome_variacao: "Joao S." }]);
 
 describe("categorias padronizadas", () => {
-  test("somente ATRASADOS, IMPLANTAÇÃO e SUCUMBÊNCIA", () => {
+  test("somente ATRASADOS, CONTRATUAL e SUCUMBÊNCIA", () => {
     expect(CLASSIFICACOES_ENTRADA.map((c) => c.value)).toEqual([
       "atrasados",
       "implantacao",
       "sucumbencia",
     ]);
-    expect(Object.values(ROTULO_CLASSIFICACAO)).toEqual([
-      "Atrasados",
-      "Implantação",
-      "Sucumbência",
-    ]);
+    expect(Object.values(ROTULO_CLASSIFICACAO)).toEqual(["Atrasados", "Contratual", "Sucumbência"]);
   });
 
   test("texto livre da planilha vira a categoria oficial", () => {

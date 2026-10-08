@@ -190,6 +190,8 @@ export interface ProcessoBase {
   tipo_acao?: string | null;
   /** Situação de pagamento do processo. */
   pago?: boolean;
+  /** NB do benefício, quando registrado no processo (só dígitos). */
+  nb_digitos?: string | null;
 }
 
 /**
@@ -237,7 +239,7 @@ export function processoDaLinha(
  * Item enviado à função `aplicar_importacao_recebimentos`: um por
  * recebimento, ou um item `sem_valor` para a linha sem valor (nada é lançado;
  * os valores vão depois no perfil). A importação nunca finaliza processo:
- * PAGO / FINALIZADO depende dos três cards (Atrasados, Implantação, Sucumbência).
+ * PAGO / FINALIZADO depende dos três cards (Atrasados, Contratual, Sucumbência).
  */
 export interface ItemRecebimento {
   linha: number;

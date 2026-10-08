@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
   Briefcase,
+  CalendarClock,
   ClipboardList,
   FileSearch,
   History,
@@ -36,6 +37,7 @@ const ITENS_MENU: ItemMenu[] = [
   { to: "/ja-pagos", label: "Já pagos", icon: Wallet, contador: (i) => i.jaPagos },
   { to: "/processos", label: "Processos e atendimentos", icon: Briefcase },
   { to: "/pagamentos", label: "Financeiro (recebimentos)", icon: Receipt },
+  { to: "/valores-previstos", label: "Valores previstos", icon: CalendarClock },
   { to: "/cobrancas", label: "Cobranças e parcelas", icon: ClipboardList },
   { to: "/relatorios", label: "Relatórios", icon: PieChart },
   { to: "/analise", label: "Análise de nomes", icon: FileSearch },

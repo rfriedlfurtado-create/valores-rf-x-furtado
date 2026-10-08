@@ -244,7 +244,7 @@ export interface RegistroRF {
   /** Situação de pagamento DESTE processo (JÁ PAGOS quando true). */
   pago: boolean;
   pago_em: string | null;
-  /** true = finalizado pela regra dos três cards (Atrasados, Implantação, Sucumbência). */
+  /** true = finalizado pela regra dos três cards (Atrasados, Contratual, Sucumbência). */
   finalizacao_validada?: boolean;
   origens: { arquivo?: string; aba?: string; linha?: number }[] | unknown[];
   created_at: string;

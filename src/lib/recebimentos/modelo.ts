@@ -419,7 +419,7 @@ function interpretarLinha(
   const categoria = categoriaDoTexto(categoriaTexto);
   if (categoriaTexto && !categoria)
     avisos.push(
-      `Categoria "${categoriaTexto}" não reconhecida — escolha Atrasados, Implantação ou Sucumbência.`,
+      `Categoria "${categoriaTexto}" não reconhecida — escolha Atrasados, Contratual ou Sucumbência.`,
     );
 
   const situacaoTexto = texto("situacao");

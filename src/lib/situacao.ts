@@ -248,7 +248,7 @@ export interface Indicadores {
   valorRecebidoDePagos: number;
   /** Clientes vigentes importados no mês corrente. */
   importadosNoMes: number;
-  /** Valores por categoria (Atrasados/Implantação/Sucumbência/sem). */
+  /** Valores por categoria (Atrasados/Contratual/Sucumbência/sem). */
   entradas: ResumoEntradas;
   /** Clientes com mais de uma entrada financeira. */
   clientesComVariasEntradas: number;

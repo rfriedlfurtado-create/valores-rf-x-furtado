@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import {
@@ -28,6 +29,7 @@ import {
   useSoltarArquivo,
 } from "@/components/SoltarArquivo";
 import { StatCard } from "@/components/StatCard";
+import { ImportacaoBlocos } from "@/components/importacao/ImportacaoBlocos";
 import { PageHeader } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -78,6 +80,7 @@ import {
   lerPlanilhaRecebimentos,
   type PlanilhaRecebimentos,
 } from "@/lib/recebimentos/modelo";
+import { ehModeloBlocos, lerPlanilhaBlocos, type LeituraBlocos } from "@/lib/recebimentos/blocos";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 import { normalizarTexto } from "@/lib/situacao";
 import { CLASSIFICACOES_ENTRADA, type ClassificacaoEntrada } from "@/lib/tipos";
@@ -130,6 +133,12 @@ function ImportarRecebimentos() {
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [relatorio, setRelatorio] = useState<ReturnType<typeof resumirPrevia> | null>(null);
+  /** Modelo em BLOCOS (VALORES PRI EXECUÇÃO): fluxo próprio. */
+  const [blocos, setBlocos] = useState<{
+    arquivo: string;
+    leitura: LeituraBlocos;
+    base: BaseIdentificacao;
+  } | null>(null);
 
   const indice = useMemo(
     () => (base ? indexarClientes(base.clientes, base.variacoes) : null),
@@ -210,7 +219,17 @@ function ImportarRecebimentos() {
     setErro(null);
     setEtapa("analisando");
     try {
-      const p = lerPlanilhaRecebimentos(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const abas = XLSX.read(bytes, { type: "array", bookSheets: true }).SheetNames;
+      if (ehModeloBlocos(abas)) {
+        const leitura = lerPlanilhaBlocos(bytes);
+        const b = await carregarBaseIdentificacao();
+        setArquivo(file.name);
+        setBlocos({ arquivo: file.name, leitura, base: b });
+        setEtapa("previa");
+        return;
+      }
+      const p = lerPlanilhaRecebimentos(bytes);
       const b = await carregarBaseIdentificacao();
       setArquivo(file.name);
       setPlanilha(p);
@@ -263,6 +282,7 @@ function ImportarRecebimentos() {
   ).length;
 
   function reiniciar() {
+    setBlocos(null);
     setEtapa("arquivo");
     setPlanilha(null);
     setResultados([]);
@@ -349,7 +369,7 @@ function ImportarRecebimentos() {
       </Button>
       <PageHeader
         titulo="Clientes com valores recebidos"
-        descricao="Identifica o cliente já cadastrado pelo Reclamante (ou CPF) e registra os valores recebidos nos cards Atrasados, Implantação e Sucumbência do processo."
+        descricao="Identifica o cliente já cadastrado pelo Reclamante (ou CPF) e registra os valores recebidos nos cards Atrasados, Contratual e Sucumbência do processo."
       >
         <Button asChild variant="outline">
           <a href={ARQUIVO_MODELO_RECEBIMENTOS} download>
@@ -406,8 +426,9 @@ function ImportarRecebimentos() {
               </li>
               <li>
                 <strong className="text-foreground">Opcionais:</strong> Valor (ou colunas
-                “Atrasados”, “Implantação”, “Sucumbência”), CPF, Categoria, Situação, Total a
-                receber, Recebimento integral, Data, Número do processo, Pasta, Observação.
+                “Atrasados”, “Contratual” (ou “Implantação”), “Sucumbência”), CPF, Categoria,
+                Situação, Total a receber, Recebimento integral, Data, Número do processo, Pasta,
+                Observação.
               </li>
               <li>
                 Só entra como recebido o recebimento efetivo: linha com Situação “previsto”,
@@ -427,9 +448,15 @@ function ImportarRecebimentos() {
               </li>
               <li>Reimportar o mesmo arquivo não duplica valores.</li>
               <li>
+                <strong className="text-foreground">Também aceito:</strong> a planilha em blocos
+                “VALORES PRI EXECUÇÃO” (abas RPV E PRECATÓRIO, IMPLANTAÇÃO JUDICIAL e IMPLANTAÇÃO
+                ADMINISTRATIVA) — reconhecida automaticamente. Nela, cliente não cadastrado é criado
+                em JÁ PAGOS e valores não confirmados vão para VALORES PREVISTOS.
+              </li>
+              <li>
                 Os valores vão para o PROCESSO da linha (pela Pasta ou Número, ou o único processo
                 do cliente). A importação não finaliza o processo: ele só vai para JÁ PAGOS quando
-                Atrasados, Implantação e Sucumbência estiverem resolvidos. Cliente com vários
+                Atrasados, Contratual e Sucumbência estiverem resolvidos. Cliente com vários
                 processos: escolha o processo na prévia.
               </li>
             </ul>
@@ -456,7 +483,17 @@ function ImportarRecebimentos() {
         </Card>
       ) : null}
 
-      {etapa === "previa" && planilha && resumo && base ? (
+      {blocos && etapa === "previa" ? (
+        <ImportacaoBlocos
+          key={blocos.arquivo}
+          arquivo={blocos.arquivo}
+          leitura={blocos.leitura}
+          base={blocos.base}
+          aoReiniciar={reiniciar}
+        />
+      ) : null}
+
+      {!blocos && etapa === "previa" && planilha && resumo && base ? (
         <div className="space-y-6">
           <Card className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>

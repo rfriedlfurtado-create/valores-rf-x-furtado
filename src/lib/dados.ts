@@ -222,6 +222,7 @@ export const CHAVES_DOMINIO = [
   ["clientes_importados"],
   ["correspondencias"],
   ["rejeicoes"],
+  ["valores_previstos"],
   ...CHAVES_FURTADO,
   ...CHAVES_RF,
 ] as const;

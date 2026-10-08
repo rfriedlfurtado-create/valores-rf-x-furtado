@@ -75,7 +75,7 @@ export function DialogPagamento({
     mutationFn: async () => {
       if (exigeCategoria && classificacao === "nenhuma")
         throw new Error(
-          "Escolha a categoria do recebimento: Atrasados, Implantação ou Sucumbência.",
+          "Escolha a categoria do recebimento: Atrasados, Contratual ou Sucumbência.",
         );
       const bloqueio =
         classificacao !== "nenhuma" ? categoriasBloqueadas?.[classificacao] : undefined;

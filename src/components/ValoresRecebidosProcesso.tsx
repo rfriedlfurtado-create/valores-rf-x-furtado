@@ -1,16 +1,18 @@
 /**
- * VALORES RECEBIDOS do processo selecionado no perfil do cliente: três cards
- * (Atrasados, Implantação, Sucumbência), sempre SOMENTE do processo
- * selecionado. Regras em src/lib/valoresProcesso.ts (e no banco).
+ * VALORES RECEBIDOS do processo selecionado no perfil do cliente: cards
+ * ATRASADOS, CONTRATUAL (implantação), SUCUMBÊNCIA e TOTAL RECEBIDO, sempre
+ * SOMENTE do processo selecionado. Valores previstos (a receber) aparecem
+ * como pendentes, separados do recebido. Regras em src/lib/valoresProcesso.ts.
  */
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ListChecks, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { DialogPagamento } from "@/components/DialogPagamento";
+import { DialogReceberPrevisto } from "@/components/DialogReceberPrevisto";
 import { Valor } from "@/components/Valor";
 import {
   AlertDialog,
@@ -59,6 +61,12 @@ import {
 } from "@/lib/tipos";
 import { cn } from "@/lib/utils";
 import {
+  previstosDoClienteQuery,
+  ROTULO_SITUACAO_PREVISTO,
+  saldoPrevisto,
+  type ValorPrevisto,
+} from "@/lib/valoresPrevistos";
+import {
   CATEGORIAS_PROCESSO,
   ROTULO_CATEGORIA_PROCESSO,
   ROTULO_STATUS_CATEGORIA,
@@ -98,7 +106,13 @@ function rotuloProcesso(r: RegistroRF): string {
   return (r.dados_rf?.numero as string | undefined) || r.numero_processo || "Sem número";
 }
 
+const ROTULO_ORIGEM: Record<string, string> = {
+  judicial: "Judicial — processo judicial",
+  administrativo: "Administrativo — INSS",
+};
+
 function origemDoRecebimento(p: Pagamento): string {
+  if (p.aba || p.celulas) return `Importação · ${p.celulas ?? p.aba}`;
   const o = (p.dados_origem ?? {}) as { arquivo?: string; linha?: number };
   if (p.importacao_id || p.chave_importacao)
     return `Importação${o.arquivo ? ` · ${o.arquivo}` : ""}${
@@ -118,7 +132,22 @@ export function ValoresRecebidosProcesso({
   perfil: PerfilRF;
   registro: RegistroRF;
 }) {
-  const v = valoresDoProcesso(perfil.pagamentos, perfil.categorias, registro.id);
+  const previstosQ = useQuery(previstosDoClienteQuery(perfil.cliente.id));
+  const previstos = previstosQ.data ?? [];
+  const v = valoresDoProcesso(perfil.pagamentos, perfil.categorias, registro.id, previstos);
+  const outros = perfil.registros.filter((r) => r.id !== registro.id);
+  const geral = outros.length
+    ? perfil.registros.reduce(
+        (acc, r) => {
+          const x = valoresDoProcesso(perfil.pagamentos, perfil.categorias, r.id, previstos);
+          return {
+            recebido: acc.recebido + x.totalRecebido,
+            pendente: acc.pendente + x.totalPendente,
+          };
+        },
+        { recebido: 0, pendente: 0 },
+      )
+    : null;
   const faltam = CATEGORIAS_PROCESSO.filter((c) => v.categorias[c].status === "pendente").map(
     (c) => ROTULO_CATEGORIA_PROCESSO[c],
   );
@@ -160,7 +189,7 @@ export function ValoresRecebidosProcesso({
         </p>
       ) : null}
 
-      <div className="@container grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="@container grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {CATEGORIAS_PROCESSO.map((c) => (
           <CardCategoria
             key={c}
@@ -168,8 +197,21 @@ export function ValoresRecebidosProcesso({
             registro={registro}
             situacao={v.categorias[c]}
             bloqueadas={bloqueadas}
+            previstos={previstos.filter(
+              (x) => x.atendimento_id === registro.id && x.categoria === c,
+            )}
           />
         ))}
+        <CardTotal
+          total={v.totalRecebido}
+          quantidade={v.quantidadeRecebimentos}
+          pendente={v.totalPendente}
+          porCategoria={CATEGORIAS_PROCESSO.map((c) => [
+            ROTULO_CATEGORIA_PROCESSO[c],
+            v.categorias[c].total,
+          ])}
+          geral={geral}
+        />
       </div>
 
       {v.semCategoria.length ? (
@@ -188,11 +230,13 @@ function CardCategoria({
   registro,
   situacao: s,
   bloqueadas,
+  previstos,
 }: {
   perfil: PerfilRF;
   registro: RegistroRF;
   situacao: SituacaoCategoria;
   bloqueadas: Partial<Record<ClassificacaoEntrada, string>> | undefined;
+  previstos: ValorPrevisto[];
 }) {
   const rotulo = ROTULO_CATEGORIA_PROCESSO[s.categoria];
   const confirmar = useAcaoValores(
@@ -219,7 +263,7 @@ function CardCategoria({
       data-testid={`card-${s.categoria}`}
       data-status={s.status}
       className={cn(
-        "flex min-h-56 flex-col gap-3 rounded-xl border bg-card p-4 md:min-h-[calc((100cqw-1.5rem)/3)]",
+        "flex min-h-56 flex-col gap-3 rounded-xl border bg-card p-4 xl:min-h-[calc((100cqw-2.25rem)/4)]",
         s.status === "recebido" && "border-success/40",
         s.status === "pendente" && "border-border",
         s.status === "nao_havera" && "border-dashed border-border bg-muted/30",
@@ -240,8 +284,9 @@ function CardCategoria({
               neutroSeZero={false}
               className="block break-words text-2xl font-bold"
             />
+            <OrigensDoCard situacao={s} />
             <p className="mt-1 text-xs text-muted-foreground">
-              {s.quantidade === 1 ? "1 recebimento" : `${s.quantidade} recebimentos`}
+              {s.quantidade === 1 ? "1 lançamento" : `${s.quantidade} lançamentos`}
               {s.parcial ? " · recebimento parcial" : ""}
               {s.status === "recebido"
                 ? s.integralConfirmado
@@ -257,6 +302,21 @@ function CardCategoria({
               : "Nenhum recebimento registrado"}
           </p>
         )}
+        {s.pendente > 0 ? (
+          <p className="mt-2 text-xs">
+            <span className="text-muted-foreground">Pendente (previsto): </span>
+            <span className="tabular font-semibold text-warning">{formatBRL(s.pendente)}</span>
+            <span className="text-muted-foreground">
+              {" "}
+              · {previstos.filter((x) => saldoPrevisto(x) > 0).length} a receber
+            </span>
+          </p>
+        ) : null}
+        {s.totalCliente > 0 ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Recebido pelo cliente (fora do total): {formatBRL(s.totalCliente)}
+          </p>
+        ) : null}
         {s.totalPrevisto !== null ? (
           <p className="mt-2 text-xs">
             <span className="text-muted-foreground">Total a receber: </span>
@@ -272,7 +332,7 @@ function CardCategoria({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <DialogRegistros perfil={perfil} registro={registro} situacao={s} />
+        <DialogRegistros perfil={perfil} registro={registro} situacao={s} previstos={previstos} />
         {s.status !== "nao_havera" ? (
           <DialogPagamento
             clienteFixo={perfil.cliente}
@@ -331,6 +391,96 @@ function CardCategoria({
   );
 }
 
+/** Origem dos recebimentos do card; CONTRATUAL com as duas origens mostra os subtotais. */
+function OrigensDoCard({ situacao: s }: { situacao: SituacaoCategoria }) {
+  const origens = (["judicial", "administrativo"] as const).filter((o) => s.porOrigem[o] > 0);
+  if (!origens.length) return null;
+  if (origens.length === 1 && !s.porOrigem.sem)
+    return <p className="mt-1 text-xs font-medium text-info">{ROTULO_ORIGEM[origens[0]!]}</p>;
+  return (
+    <ul className="mt-1 space-y-0.5 text-xs">
+      {origens.map((o) => (
+        <li key={o} className="flex justify-between gap-2">
+          <span className="text-info">{ROTULO_ORIGEM[o]}</span>
+          <span className="tabular font-semibold">{formatBRL(s.porOrigem[o])}</span>
+        </li>
+      ))}
+      {s.porOrigem.sem ? (
+        <li className="flex justify-between gap-2">
+          <span className="text-muted-foreground">Origem não informada</span>
+          <span className="tabular font-semibold">{formatBRL(s.porOrigem.sem)}</span>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+/** TOTAL RECEBIDO do processo = Atrasados + Contratual + Sucumbência (escritório). */
+function CardTotal({
+  total,
+  quantidade,
+  pendente,
+  porCategoria,
+  geral,
+}: {
+  total: number;
+  quantidade: number;
+  pendente: number;
+  porCategoria: [string, number][];
+  geral: { recebido: number; pendente: number } | null;
+}) {
+  return (
+    <article
+      data-testid="card-total"
+      className="flex min-h-56 flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 xl:min-h-[calc((100cqw-2.25rem)/4)]"
+    >
+      <header className="flex items-start justify-between gap-2">
+        <h4 className="text-sm font-semibold whitespace-nowrap uppercase tracking-wide">
+          Total recebido
+        </h4>
+        <span className="shrink-0 whitespace-nowrap">
+          <BadgeStatus
+            texto={quantidade === 1 ? "1 lançamento" : `${quantidade} lançamentos`}
+            tom="neutro"
+          />
+        </span>
+      </header>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">Recebido pelo escritório neste processo</p>
+        <Valor
+          valor={total}
+          tamanho="lg"
+          neutroSeZero={false}
+          className="block break-words text-2xl font-bold"
+        />
+        <ul className="mt-2 space-y-0.5 text-xs">
+          {porCategoria.map(([rotulo, valor]) => (
+            <li key={rotulo} className="flex justify-between gap-2">
+              <span className="text-muted-foreground">{rotulo}</span>
+              <span className="tabular">{formatBRL(valor)}</span>
+            </li>
+          ))}
+        </ul>
+        {pendente > 0 ? (
+          <p className="mt-2 text-xs">
+            <span className="text-muted-foreground">Pendente (previsto, fora do total): </span>
+            <span className="tabular font-semibold text-warning">{formatBRL(pendente)}</span>
+          </p>
+        ) : null}
+      </div>
+      {geral ? (
+        <p className="border-t border-border pt-2 text-xs">
+          <span className="font-semibold">Total geral do cliente (todos os processos): </span>
+          <span className="tabular font-semibold">{formatBRL(geral.recebido)}</span>
+          {geral.pendente > 0 ? (
+            <span className="text-muted-foreground"> · pendente {formatBRL(geral.pendente)}</span>
+          ) : null}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Registros que compõem o total (consultar, editar, excluir) + situação
 // ---------------------------------------------------------------------------
@@ -339,10 +489,12 @@ function DialogRegistros({
   perfil,
   registro,
   situacao: s,
+  previstos,
 }: {
   perfil: PerfilRF;
   registro: RegistroRF;
   situacao: SituacaoCategoria;
+  previstos: ValorPrevisto[];
 }) {
   const [aberto, setAberto] = useState(false);
   const rotulo = ROTULO_CATEGORIA_PROCESSO[s.categoria];
@@ -399,6 +551,63 @@ function DialogRegistros({
             ))}
           </ul>
         )}
+
+        {previstos.length ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Valores previstos (não somados ao recebido)
+            </p>
+            <ul className="divide-y divide-border rounded-lg border border-dashed border-border">
+              {previstos.map((x) => (
+                <li
+                  key={x.id}
+                  className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="flex flex-wrap items-baseline gap-2">
+                      <span className="tabular font-bold">
+                        {x.valor === null ? "—" : formatBRL(x.valor)}
+                      </span>
+                      <BadgeStatus
+                        texto={ROTULO_SITUACAO_PREVISTO[x.situacao]}
+                        tom={
+                          x.situacao === "parcial" || x.situacao === "nao_confirmado"
+                            ? "alerta"
+                            : "neutro"
+                        }
+                      />
+                      {x.valor_recebido ? (
+                        <span className="text-xs text-muted-foreground">
+                          recebido {formatBRL(x.valor_recebido)}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs">
+                      {[x.descricao, x.origem && ROTULO_ORIGEM[x.origem], x.canal]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {x.parcela || x.competencia || x.percentual ? (
+                      <p className="text-xs text-muted-foreground">
+                        {[x.percentual, x.parcela && `parcelas: ${x.parcela}`, x.competencia]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                    {x.observacao ? (
+                      <p className="break-words text-xs text-muted-foreground">{x.observacao}</p>
+                    ) : null}
+                    {x.celulas ? (
+                      <p className="text-xs text-muted-foreground">Origem: {x.celulas}</p>
+                    ) : null}
+                    {x.conferencia ? <p className="text-xs text-warning">{x.conferencia}</p> : null}
+                  </div>
+                  {saldoPrevisto(x) > 0 ? <DialogReceberPrevisto previsto={x} compacto /> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -515,8 +724,29 @@ function LinhaRecebimento({ pagamento: p, perfil }: { pagamento: Pagamento; perf
             {ROTULO_TIPO_PAGAMENTO[p.tipo] ?? p.tipo}
           </span>
         </p>
+        {p.descricao || p.origem || p.canal ? (
+          <p className="text-xs">
+            {[p.descricao, p.origem && ROTULO_ORIGEM[p.origem], p.canal]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
+        {p.percentual || p.parcela || p.competencia || p.data_informada === false ? (
+          <p className="text-xs text-muted-foreground">
+            {[
+              p.percentual,
+              p.parcela && `parcelas: ${p.parcela}`,
+              p.competencia,
+              p.data_informada === false &&
+                "data não informada na planilha (usada a data da importação)",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
         <p className="text-xs text-muted-foreground">{origemDoRecebimento(p)}</p>
         {p.observacao ? <p className="break-words text-sm">{p.observacao}</p> : null}
+        {p.conferencia ? <p className="text-xs text-warning">{p.conferencia}</p> : null}
       </div>
       <div className="flex shrink-0 gap-1">
         <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>

@@ -19,6 +19,7 @@ import { Route as JaPagosRouteImport } from './routes/ja-pagos'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as ProcessosRouteImport } from './routes/processos'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
+import { Route as ValoresPrevistosRouteImport } from './routes/valores-previstos'
 import { Route as ClientesIndexRouteImport } from './routes/clientes/index'
 import { Route as ClientesClienteIdRouteImport } from './routes/clientes/$clienteId'
 import { Route as ImportacoesLoteIdRouteImport } from './routes/importacoes_.$loteId'
@@ -75,6 +76,11 @@ const RelatoriosRoute = RelatoriosRouteImport.update({
   path: '/relatorios',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ValoresPrevistosRoute = ValoresPrevistosRouteImport.update({
+  id: '/valores-previstos',
+  path: '/valores-previstos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ClientesIndexRoute = ClientesIndexRouteImport.update({
   id: '/clientes/',
   path: '/clientes/',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/pagamentos': typeof PagamentosRoute
   '/processos': typeof ProcessosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/valores-previstos': typeof ValoresPrevistosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
   '/importar/furtado': typeof ImportarFurtadoRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/pagamentos': typeof PagamentosRoute
   '/processos': typeof ProcessosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/valores-previstos': typeof ValoresPrevistosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes/$loteId': typeof ImportacoesLoteIdRoute
   '/importar/furtado': typeof ImportarFurtadoRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/pagamentos': typeof PagamentosRoute
   '/processos': typeof ProcessosRoute
   '/relatorios': typeof RelatoriosRoute
+  '/valores-previstos': typeof ValoresPrevistosRoute
   '/clientes/$clienteId': typeof ClientesClienteIdRoute
   '/importacoes_/$loteId': typeof ImportacoesLoteIdRoute
   '/importar_/furtado': typeof ImportarFurtadoRoute
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/processos'
     | '/relatorios'
+    | '/valores-previstos'
     | '/clientes/$clienteId'
     | '/importacoes/$loteId'
     | '/importar/furtado'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/processos'
     | '/relatorios'
+    | '/valores-previstos'
     | '/clientes/$clienteId'
     | '/importacoes/$loteId'
     | '/importar/furtado'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/processos'
     | '/relatorios'
+    | '/valores-previstos'
     | '/clientes/$clienteId'
     | '/importacoes_/$loteId'
     | '/importar_/furtado'
@@ -218,6 +230,7 @@ export interface RootRouteChildren {
   PagamentosRoute: typeof PagamentosRoute
   ProcessosRoute: typeof ProcessosRoute
   RelatoriosRoute: typeof RelatoriosRoute
+  ValoresPrevistosRoute: typeof ValoresPrevistosRoute
   ClientesClienteIdRoute: typeof ClientesClienteIdRoute
   ImportacoesLoteIdRoute: typeof ImportacoesLoteIdRoute
   ImportarFurtadoRoute: typeof ImportarFurtadoRoute
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RelatoriosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/valores-previstos': {
+      id: '/valores-previstos'
+      path: '/valores-previstos'
+      fullPath: '/valores-previstos'
+      preLoaderRoute: typeof ValoresPrevistosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/clientes/': {
       id: '/clientes/'
       path: '/clientes'
@@ -346,6 +366,7 @@ const rootRouteChildren: RootRouteChildren = {
   PagamentosRoute: PagamentosRoute,
   ProcessosRoute: ProcessosRoute,
   RelatoriosRoute: RelatoriosRoute,
+  ValoresPrevistosRoute: ValoresPrevistosRoute,
   ClientesClienteIdRoute: ClientesClienteIdRoute,
   ImportacoesLoteIdRoute: ImportacoesLoteIdRoute,
   ImportarFurtadoRoute: ImportarFurtadoRoute,

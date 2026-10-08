@@ -23,7 +23,7 @@ export const CATEGORIAS_PROCESSO: ClassificacaoEntrada[] = [
 
 export const ROTULO_CATEGORIA_PROCESSO: Record<ClassificacaoEntrada, string> = {
   atrasados: "Atrasados",
-  implantacao: "Implantação",
+  implantacao: "Contratual",
   sucumbencia: "Sucumbência",
 };
 
@@ -47,6 +47,13 @@ export const ROTULO_STATUS_CATEGORIA: Record<StatusCategoria, string> = {
 };
 
 export interface SituacaoCategoria {
+  /** Recebido pelo cliente (não entra no total do escritório). */
+  totalCliente: number;
+  /** Subtotais do escritório por origem (judicial / administrativo / não informada). */
+  porOrigem: { judicial: number; administrativo: number; sem: number };
+  /** Saldo pendente dos VALORES PREVISTOS desta categoria (não é recebido). */
+  pendente: number;
+  previstos: PrevistoMinimo[];
   categoria: ClassificacaoEntrada;
   status: StatusCategoria;
   /** Soma dos recebimentos (> 0) desta categoria neste processo. */
@@ -85,16 +92,47 @@ export function recebimentosDoProcesso(
     );
 }
 
+/** Valor previsto mínimo para os cards (tabela valores_previstos). */
+export interface PrevistoMinimo {
+  id: string;
+  atendimento_id: string | null;
+  categoria: ClassificacaoEntrada | null;
+  valor: number | null;
+  valor_recebido: number;
+  situacao: string;
+  origem?: string | null;
+}
+
+const SITUACOES_PENDENTES_PREVISTO = ["a_receber", "parcial", "nao_confirmado"];
+
+export function saldoDoPrevisto(v: PrevistoMinimo): number {
+  if (!SITUACOES_PENDENTES_PREVISTO.includes(v.situacao) || v.valor === null) return 0;
+  return Math.max(0, arredondar(Number(v.valor) - Number(v.valor_recebido ?? 0)));
+}
+
 export function situacaoCategoria(
   pagamentosDoProcesso: readonly Pagamento[],
   categoria: ClassificacaoEntrada,
   cfg: CategoriaProcessoCfg | null | undefined,
+  previstosDoProcesso: readonly PrevistoMinimo[] = [],
 ): SituacaoCategoria {
   const registros = pagamentosDoProcesso.filter(
     (p) => p.classificacao === categoria && Number(p.valor) > 0,
   );
-  const total = arredondar(registros.reduce((s, p) => s + Number(p.valor), 0));
-  const quantidade = registros.length;
+  // TOTAL do card = recebimentos do ESCRITÓRIO (valores recebidos pelo cliente ficam à parte).
+  const doEscritorio = registros.filter((p) => p.destinatario !== "cliente");
+  const total = arredondar(doEscritorio.reduce((s, p) => s + Number(p.valor), 0));
+  const totalCliente = arredondar(
+    registros.filter((p) => p.destinatario === "cliente").reduce((s, p) => s + Number(p.valor), 0),
+  );
+  const porOrigem = { judicial: 0, administrativo: 0, sem: 0 };
+  for (const p of doEscritorio) {
+    const k = p.origem === "judicial" || p.origem === "administrativo" ? p.origem : "sem";
+    porOrigem[k] = arredondar(porOrigem[k] + Number(p.valor));
+  }
+  const previstos = previstosDoProcesso.filter((v) => v.categoria === categoria);
+  const pendente = arredondar(previstos.reduce((s, v) => s + saldoDoPrevisto(v), 0));
+  const quantidade = doEscritorio.length; // só recebimentos do escritório definem a situação
   const totalPrevisto = cfg?.total_previsto != null ? Number(cfg.total_previsto) : null;
   const integralConfirmado = Boolean(cfg?.integral_confirmado);
   const naoHavera = categoria === "sucumbencia" && Boolean(cfg?.nao_havera);
@@ -125,6 +163,10 @@ export function situacaoCategoria(
     categoria,
     status,
     total,
+    totalCliente,
+    porOrigem,
+    pendente,
+    previstos,
     quantidade,
     registros,
     totalPrevisto,
@@ -139,6 +181,11 @@ export function situacaoCategoria(
 
 export interface ValoresDoProcesso {
   categorias: Record<ClassificacaoEntrada, SituacaoCategoria>;
+  /** TOTAL RECEBIDO do processo = Atrasados + Contratual + Sucumbência (escritório). */
+  totalRecebido: number;
+  quantidadeRecebimentos: number;
+  /** Saldo pendente dos valores previstos do processo (todas as categorias). */
+  totalPendente: number;
   /** Recebimentos do processo sem categoria — para conferência. */
   semCategoria: Pagamento[];
   /** Pendências para finalizar (vazio = pode ser marcado como pago). */
@@ -150,8 +197,10 @@ export function valoresDoProcesso(
   pagamentos: readonly Pagamento[],
   cfgs: readonly CategoriaProcessoCfg[],
   atendimentoId: string,
+  previstos: readonly PrevistoMinimo[] = [],
 ): ValoresDoProcesso {
   const doProcesso = recebimentosDoProcesso(pagamentos, atendimentoId);
+  const previstosDoProcesso = previstos.filter((v) => v.atendimento_id === atendimentoId);
   const categorias = Object.fromEntries(
     CATEGORIAS_PROCESSO.map((c) => [
       c,
@@ -159,6 +208,7 @@ export function valoresDoProcesso(
         doProcesso,
         c,
         cfgs.find((x) => x.atendimento_id === atendimentoId && x.categoria === c),
+        previstosDoProcesso,
       ),
     ]),
   ) as Record<ClassificacaoEntrada, SituacaoCategoria>;
@@ -167,6 +217,12 @@ export function valoresDoProcesso(
   );
   return {
     categorias,
+    totalRecebido: arredondar(CATEGORIAS_PROCESSO.reduce((s, c) => s + categorias[c].total, 0)),
+    quantidadeRecebimentos: CATEGORIAS_PROCESSO.reduce(
+      (s, c) => s + categorias[c].registros.filter((p) => p.destinatario !== "cliente").length,
+      0,
+    ),
+    totalPendente: arredondar(previstosDoProcesso.reduce((s, v) => s + saldoDoPrevisto(v), 0)),
     semCategoria: doProcesso.filter((p) => !p.classificacao && Number(p.valor) > 0),
     pendencias,
     podeFinalizar: pendencias.length === 0,

@@ -33,8 +33,8 @@ export interface Cliente {
 
 /**
  * Categoria de um VALOR RECEBIDO (cada entrada tem a sua). Padrão único do
- * sistema: ATRASADOS, IMPLANTAÇÃO e SUCUMBÊNCIA — não existem outras variações
- * (a antiga CONTRATUAL passou a ser IMPLANTAÇÃO). Gravada em
+ * sistema: ATRASADOS, CONTRATUAL (valor interno 'implantacao' — a implantação é a
+ * natureza do lançamento) e SUCUMBÊNCIA. Gravada em
  * `pagamentos.classificacao` (migração 20261006120000_valores_recebidos_por_categoria.sql).
  * `null` = ainda não classificada (fica para conferência).
  */
@@ -42,13 +42,13 @@ export type ClassificacaoEntrada = "atrasados" | "implantacao" | "sucumbencia";
 
 export const CLASSIFICACOES_ENTRADA: { value: ClassificacaoEntrada; label: string }[] = [
   { value: "atrasados", label: "Atrasados" },
-  { value: "implantacao", label: "Implantação" },
+  { value: "implantacao", label: "Contratual" },
   { value: "sucumbencia", label: "Sucumbência" },
 ];
 
 export const ROTULO_CLASSIFICACAO: Record<ClassificacaoEntrada, string> = {
   atrasados: "Atrasados",
-  implantacao: "Implantação",
+  implantacao: "Contratual",
   sucumbencia: "Sucumbência",
 };
 
@@ -74,6 +74,24 @@ export interface Pagamento {
   importacao_id?: string | null;
   /** Conteúdo original da linha importada (arquivo, linha, colunas). */
   dados_origem?: Record<string, unknown> | null;
+  /** Judicial (processo judicial) ou administrativo (INSS). */
+  origem?: "judicial" | "administrativo" | null;
+  /** RPV, Precatório, INSS, pagamento pelo cliente… */
+  canal?: string | null;
+  /** Quem recebeu: escritório (padrão) ou cliente. */
+  destinatario?: "escritorio" | "cliente" | null;
+  /** Natureza: implantação, contratuais sobre atrasados, sucumbência da execução… */
+  natureza?: string | null;
+  descricao?: string | null;
+  competencia?: string | null;
+  parcela?: string | null;
+  percentual?: string | null;
+  /** Aba e células de origem (importação em blocos). */
+  aba?: string | null;
+  celulas?: string | null;
+  /** false = data não informada na planilha (usada a data da importação). */
+  data_informada?: boolean | null;
+  conferencia?: string | null;
 }
 
 export interface VariacaoNome {
