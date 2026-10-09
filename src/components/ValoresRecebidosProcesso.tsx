@@ -271,7 +271,36 @@ function CardCategoria({
     >
       <header className="flex flex-wrap items-start justify-between gap-2">
         <h4 className="text-sm font-semibold uppercase tracking-wide">{rotulo}</h4>
-        <BadgeStatus texto={ROTULO_STATUS_CATEGORIA[s.status]} tom={tom} />
+        {/* SUCUMBÊNCIA: "Não haverá sucumbência" logo abaixo da situação. */}
+        <div className="flex flex-col items-end gap-2">
+          <BadgeStatus texto={ROTULO_STATUS_CATEGORIA[s.status]} tom={tom} />
+          {s.categoria === "sucumbencia" ? (
+            s.naoHavera ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={naoHavera.isPending}
+                onClick={() => naoHavera.mutate(false)}
+              >
+                <Undo2 className="size-4" aria-hidden />
+                Desfazer “Não haverá”
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={naoHavera.isPending}
+                onClick={() =>
+                  s.quantidade > 0
+                    ? toast.error(MSG_CONFLITO_NAO_HAVERA, { duration: 10_000 })
+                    : naoHavera.mutate(true)
+                }
+              >
+                Não haverá sucumbência
+              </Button>
+            )
+          ) : null}
+        </div>
       </header>
 
       <div className="min-w-0 flex-1">
@@ -359,32 +388,6 @@ function CardCategoria({
             <CheckCircle2 className="size-4" aria-hidden />
             Confirmar integral
           </Button>
-        ) : null}
-        {s.categoria === "sucumbencia" ? (
-          s.naoHavera ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={naoHavera.isPending}
-              onClick={() => naoHavera.mutate(false)}
-            >
-              <Undo2 className="size-4" aria-hidden />
-              Desfazer “Não haverá”
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={naoHavera.isPending}
-              onClick={() =>
-                s.quantidade > 0
-                  ? toast.error(MSG_CONFLITO_NAO_HAVERA, { duration: 10_000 })
-                  : naoHavera.mutate(true)
-              }
-            >
-              Não haverá sucumbência
-            </Button>
-          )
         ) : null}
       </div>
     </article>
