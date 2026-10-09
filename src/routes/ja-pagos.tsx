@@ -37,10 +37,11 @@ import {
   useFiltroEscritorio,
   useVinculosEscritorio,
 } from "@/lib/escritorio";
-import { formatDate } from "@/lib/format";
+import { formatBRL, formatDate } from "@/lib/format";
+import { REGRA_REPASSE, resumirRepasse } from "@/lib/repasse";
 import { propsLinhaClicavel } from "@/lib/linhaClicavel";
 import { correspondeBusca, processosDaVisao } from "@/lib/situacao";
-import type { ClienteComTotais } from "@/lib/tipos";
+import type { ClienteComTotais, Pagamento } from "@/lib/tipos";
 
 export const Route = createFileRoute("/ja-pagos")({
   head: () => ({
@@ -61,7 +62,8 @@ export const Route = createFileRoute("/ja-pagos")({
   component: JaPagos,
 });
 
-type OrdenacaoJaPagos = "pago_recente" | "pago_antigo" | "valor_desc" | "valor_asc" | "nome";
+type OrdenacaoJaPagos =
+  "pago_recente" | "pago_antigo" | "valor_desc" | "valor_asc" | "repasse_desc" | "nome";
 
 function JaPagos() {
   const { base, variacoes, carregando } = useSistema();
@@ -105,8 +107,9 @@ function JaPagos() {
     > = {
       pago_recente: (a, b) => (b.pagoEm ?? "").localeCompare(a.pagoEm ?? ""),
       pago_antigo: (a, b) => (a.pagoEm ?? "").localeCompare(b.pagoEm ?? ""),
-      valor_desc: (a, b) => b.totalRecebidoPagos - a.totalRecebidoPagos,
-      valor_asc: (a, b) => a.totalRecebidoPagos - b.totalRecebidoPagos,
+      valor_desc: (a, b) => b.totalRecebidoElegivel - a.totalRecebidoElegivel,
+      valor_asc: (a, b) => a.totalRecebidoElegivel - b.totalRecebidoElegivel,
+      repasse_desc: (a, b) => b.totalRepasse - a.totalRepasse,
       nome: (a, b) => a.nome.localeCompare(b.nome, "pt-BR"),
     };
 
@@ -156,10 +159,15 @@ function JaPagos() {
             <SelectItem value="pago_antigo">Identificado mais antigo</SelectItem>
             <SelectItem value="valor_desc">Maior valor recebido</SelectItem>
             <SelectItem value="valor_asc">Menor valor recebido</SelectItem>
+            <SelectItem value="repasse_desc">Maior repasse RF</SelectItem>
             <SelectItem value="nome">Nome (A-Z)</SelectItem>
           </SelectContent>
         </Select>
       </div>
+
+      {lista.length ? (
+        <ResumoRepasseLista lista={lista} pagamentos={base.pagamentosPorCliente} />
+      ) : null}
 
       {lista.length === 0 ? (
         <SecaoVazia
@@ -178,7 +186,8 @@ function JaPagos() {
                 <TableHead className="min-w-52">Nome</TableHead>
                 <TableHead className="min-w-36">CPF</TableHead>
                 <TableHead className="min-w-56">Processos pagos</TableHead>
-                <TableHead className="text-right">Total recebido</TableHead>
+                <TableHead className="text-right">Recebido pelo Furtado</TableHead>
+                <TableHead className="text-right">Repasse RF ({REGRA_REPASSE.rotulo})</TableHead>
                 <TableHead className="text-center">Pagamentos</TableHead>
                 <TableHead>Último recebimento</TableHead>
                 <TableHead>Cadastro</TableHead>
@@ -213,7 +222,10 @@ function JaPagos() {
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Valor valor={cliente.totalRecebidoPagos} tamanho="lg" />
+                    <Valor valor={cliente.totalRecebidoElegivel} tamanho="lg" />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Valor valor={cliente.totalRepasse} tamanho="lg" className="text-money" />
                   </TableCell>
                   <TableCell className="text-center tabular font-semibold">
                     {cliente.quantidadePagamentosPagos}
@@ -249,6 +261,32 @@ function JaPagos() {
           </Table>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Totais da lista exibida (respeita busca e filtro): recebido × repasse 5 %. */
+function ResumoRepasseLista({
+  lista,
+  pagamentos,
+}: {
+  lista: ClienteComTotais[];
+  pagamentos: Map<string, Pagamento[]>;
+}) {
+  const r = resumirRepasse(lista.flatMap((c) => pagamentos.get(c.id) ?? []));
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-8 gap-y-2 rounded-xl border border-money/30 bg-money/5 px-5 py-3 text-sm">
+      <span>
+        <span className="text-muted-foreground">Total recebido pelo Furtado: </span>
+        <strong className="tabular">{formatBRL(r.recebido)}</strong>
+      </span>
+      <span>
+        <span className="text-muted-foreground">
+          Repasse Ricardo Friedl ({REGRA_REPASSE.rotulo}):{" "}
+        </span>
+        <strong className="tabular text-money">{formatBRL(r.repasse)}</strong>
+      </span>
+      <span className="text-xs text-muted-foreground">{lista.length} cliente(s) na lista</span>
     </div>
   );
 }

@@ -68,7 +68,15 @@ interface AtendimentoBruto {
 async function carregarBase(): Promise<BaseAgregada> {
   const [clientesRes, pagamentosRes, atendimentos] = await Promise.all([
     supabase.from("clientes").select("*").is("deleted_at", null).order("nome", { ascending: true }),
-    supabase.from("pagamentos").select("*").order("data_pagamento", { ascending: false }),
+    // Todas as páginas: com mais de 1000 recebimentos os totais (e o repasse) ficariam incompletos.
+    todasAsLinhas<Pagamento>((de, ate) =>
+      supabase
+        .from("pagamentos")
+        .select("*")
+        .order("data_pagamento", { ascending: false })
+        .order("id")
+        .range(de, ate),
+    ),
     todasAsLinhas<AtendimentoBruto>((de, ate) =>
       db
         .from("atendimentos")
@@ -92,7 +100,7 @@ async function carregarBase(): Promise<BaseAgregada> {
 
   return agregarBase(
     assertOk(clientesRes) as unknown as Cliente[],
-    assertOk(pagamentosRes) as unknown as Pagamento[],
+    pagamentosRes,
     new Date(),
     processos,
   );
@@ -225,6 +233,7 @@ export const CHAVES_DOMINIO = [
   ["correspondencias"],
   ["rejeicoes"],
   ["valores_previstos"],
+  ["auditoria_repasse"],
   ...CHAVES_FURTADO,
   ...CHAVES_RF,
 ] as const;

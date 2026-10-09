@@ -116,6 +116,7 @@ export const TABELAS_OBSERVADAS = [
   "registro_linhas",
   "revisoes_rf",
   "historico_cliente",
+  "auditoria_repasse",
 ] as const;
 
 /**

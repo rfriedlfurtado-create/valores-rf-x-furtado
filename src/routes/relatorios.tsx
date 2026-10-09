@@ -21,7 +21,10 @@ import {
   type CategoriaFinanceira,
   type EscritorioOrigem,
 } from "@/lib/furtado/modelo";
+import { TabelaCategoriasRepasse } from "@/components/RepasseCliente";
+import { REGRA_REPASSE, resumirRepasse } from "@/lib/repasse";
 import { ROTULO_GRUPO, type GrupoClassificacao } from "@/lib/situacao";
+import type { Pagamento } from "@/lib/tipos";
 
 export const Route = createFileRoute("/relatorios")({
   head: () => ({
@@ -78,6 +81,7 @@ function Relatorios() {
     }
     // Recebimentos confirmados (módulo existente)
     const recebidosPorClass = new Map<GrupoClassificacao, number>();
+    const entradasFiltro: Pagamento[] = [];
     let totalRecebido = 0;
     const porEscritorio = new Map<EscritorioOrigem, number>();
     for (const [clienteId, lista] of base.pagamentosPorCliente) {
@@ -88,6 +92,7 @@ function Relatorios() {
           ? registroPassaFiltro(p.escritorio, filtro)
           : clientePassaFiltro(cliente, filtro, vinculos);
         if (!passa) continue;
+        entradasFiltro.push(p);
         totalRecebido += p.valor;
         const g = (p.classificacao ?? "sem_classificacao") as GrupoClassificacao;
         recebidosPorClass.set(g, (recebidosPorClass.get(g) ?? 0) + p.valor);
@@ -107,7 +112,27 @@ function Relatorios() {
       req.set(k, x);
     }
     const clientes = base.clientes.filter((c) => clientePassaFiltro(c, filtro, vinculos)).length;
-    return { porCat, recebidosPorClass, totalRecebido, porEscritorio, req, clientes };
+    // Repasse Ricardo Friedl: motor único, mesmas entradas do filtro.
+    const repasse = resumirRepasse(entradasFiltro);
+    const porMes = new Map<string, Pagamento[]>();
+    for (const p of entradasFiltro) {
+      const m = p.data_pagamento.slice(0, 7);
+      porMes.set(m, [...(porMes.get(m) ?? []), p]);
+    }
+    const repassePorMes = [...porMes.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([mes, lista]) => ({ mes, resumo: resumirRepasse(lista) }))
+      .filter((x) => x.resumo.quantidade > 0);
+    return {
+      porCat,
+      recebidosPorClass,
+      totalRecebido,
+      porEscritorio,
+      req,
+      clientes,
+      repasse,
+      repassePorMes,
+    };
   }, [base, lancamentos.data, requisicoes.data, filtro, vinculos]);
 
   if (carregando || !base || !dados) {
@@ -129,6 +154,55 @@ function Relatorios() {
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="gap-3 border-money/30 p-5 lg:col-span-2" data-testid="relatorio-repasse">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide">
+              Repasse Ricardo Friedl — {REGRA_REPASSE.rotulo}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {REGRA_REPASSE.rotulo} de cada valor efetivamente recebido · regra v
+              {REGRA_REPASSE.versao}
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <TabelaCategoriasRepasse resumo={dados.repasse} />
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Mês do recebimento</th>
+                    <th className="px-3 py-2 text-right">Recebido</th>
+                    <th className="px-3 py-2 text-right">Repasse</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dados.repassePorMes.length === 0 ? (
+                    <tr className="border-t border-border">
+                      <td colSpan={3} className="px-3 py-2 text-muted-foreground">
+                        Nenhum valor recebido no filtro.
+                      </td>
+                    </tr>
+                  ) : (
+                    dados.repassePorMes.map(({ mes, resumo }) => (
+                      <tr key={mes} className="border-t border-border">
+                        <td className="px-3 py-1.5 tabular">
+                          {mes.split("-").reverse().join("/")}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular">
+                          {formatBRL(resumo.recebido)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular font-semibold text-money">
+                          {formatBRL(resumo.repasse)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Card>
+
         <Card className="gap-3 p-5 lg:col-span-2">
           <h2 className="text-sm font-bold uppercase tracking-wide">
             Valores informados nas planilhas, por categoria

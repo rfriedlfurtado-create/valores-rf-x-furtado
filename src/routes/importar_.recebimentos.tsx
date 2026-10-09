@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBRL, formatDate } from "@/lib/format";
+import { REGRA_REPASSE } from "@/lib/repasse";
 import {
   carregarBaseIdentificacao,
   criarClientesValores,
@@ -376,6 +377,7 @@ function ImportarRecebimentos() {
       await sincronizar(EVENTOS.IMPORTACAO_CONCLUIDA);
       toast.success(
         `Importação concluída: ${final.valoresNovos} valor(es) registrado(s)` +
+          ` · repasse Ricardo Friedl ${formatBRL(final.repasseNovo)}` +
           (criados ? `, ${criados} cliente(s) criado(s) em CLIENTES` : "") +
           (final.clientesMovidos
             ? `, ${final.clientesMovidos} cliente(s) Ricardo Friedl movido(s) para JÁ PAGOS.`
@@ -587,7 +589,7 @@ function ImportarRecebimentos() {
               valor={resumo.valoresNovos}
               icone={Wallet}
               tom="money"
-              descricao={`Total ${formatBRL(resumo.totalNovo)}`}
+              descricao={`Total ${formatBRL(resumo.totalNovo)} · repasse RF ${REGRA_REPASSE.rotulo}: ${formatBRL(resumo.repasseNovo)}`}
             />
             <StatCard
               titulo="Já registrados"
@@ -735,7 +737,8 @@ function ImportarRecebimentos() {
               <p className="text-base font-semibold">Importação concluída</p>
               <p className="text-sm text-muted-foreground">
                 {relatorio.valoresNovos} valor(es) registrado(s) · total{" "}
-                {formatBRL(relatorio.totalNovo)} ·{" "}
+                {formatBRL(relatorio.totalNovo)} · repasse Ricardo Friedl ({REGRA_REPASSE.rotulo}){" "}
+                {formatBRL(relatorio.repasseNovo)} calculado automaticamente ·{" "}
                 {relatorio.clientesCriados
                   ? `${relatorio.clientesCriados} cliente(s) criado(s) em CLIENTES · `
                   : ""}

@@ -15,6 +15,7 @@
  */
 
 import { somenteDigitos } from "@/lib/rf/valores";
+import { repasseDoValor } from "@/lib/repasse";
 import { normalizarTexto } from "@/lib/situacao";
 import type { ClassificacaoEntrada } from "@/lib/tipos";
 
@@ -360,6 +361,8 @@ export interface ResumoPrevia {
   valoresJaRegistrados: number;
   possiveisDuplicados: number;
   totalNovo: number;
+  /** Repasse Ricardo Friedl (5 %) dos valores NOVOS — já registrados/duplicados não entram. */
+  repasseNovo: number;
   semCategoria: number;
   revisao: number;
   pendentes: number;
@@ -385,6 +388,7 @@ export function resumirPrevia(params: {
     jaReg = 0,
     dup = 0,
     total = 0,
+    repasseCent = 0,
     semCat = 0;
   for (const i of itens) {
     clientes.add(i.cliente_id);
@@ -393,6 +397,7 @@ export function resumirPrevia(params: {
     else if (r?.resultado === "inserido") {
       novos += 1;
       total = Math.round((total + (i.valor ?? 0)) * 100) / 100;
+      repasseCent += Math.round(repasseDoValor(i.valor ?? 0) * 100);
       if (!i.classificacao) semCat += 1;
     } else if (r?.resultado === "ja_registrado") jaReg += 1;
     else if (r?.resultado === "possivel_duplicado") dup += 1;
@@ -413,6 +418,7 @@ export function resumirPrevia(params: {
     valoresJaRegistrados: jaReg,
     possiveisDuplicados: dup,
     totalNovo: total,
+    repasseNovo: repasseCent / 100,
     semCategoria: semCat,
     revisao,
     pendentes: params.pendentes,

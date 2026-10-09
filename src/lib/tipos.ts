@@ -171,6 +171,10 @@ export interface ClienteComTotais extends Cliente {
   quantidadePagamentos: number;
   ultimoPagamento: string | null;
   primeiroPagamento: string | null;
+  /** Valores efetivamente recebidos pelo Furtado (base do repasse). */
+  totalRecebidoElegivel: number;
+  /** Repasse Ricardo Friedl (5 %) = soma dos repasses de cada entrada (src/lib/repasse.ts). */
+  totalRepasse: number;
 }
 
 /** Linha pronta para exibição nas tabelas de correspondência. */

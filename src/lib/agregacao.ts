@@ -11,6 +11,7 @@ import {
   estaPago,
   type Indicadores,
 } from "./situacao";
+import { resumirRepasse } from "./repasse";
 import type { Cliente, ClienteComTotais, Pagamento, ProcessoResumo } from "./tipos";
 
 function numero(valor: unknown): number {
@@ -82,6 +83,7 @@ export function agregarBase(
     const datas = lista.map((p) => p.data_pagamento).sort();
     const processos = processosPorCliente.get(cliente.id) ?? [];
     const dosPagos = entradasDosPagos({ ...cliente, processos }, lista);
+    const repasse = resumirRepasse(lista);
     return {
       ...cliente,
       processos,
@@ -93,6 +95,8 @@ export function agregarBase(
       quantidadePagamentos: lista.length,
       ultimoPagamento: datas.length ? datas[datas.length - 1]! : null,
       primeiroPagamento: datas.length ? datas[0]! : null,
+      totalRecebidoElegivel: repasse.recebido,
+      totalRepasse: repasse.repasse,
     };
   });
 

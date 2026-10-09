@@ -51,6 +51,13 @@ import {
   type AlteracaoRecebimento,
 } from "@/lib/acoes";
 import { formatBRL, formatDate, parseBRL } from "@/lib/format";
+import {
+  entradaElegivel,
+  REGRA_REPASSE,
+  repasseDaEntrada,
+  resumirRepasse,
+  type ResumoRepasse,
+} from "@/lib/repasse";
 import type { PerfilRF, RegistroRF } from "@/lib/rf/dados";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 import {
@@ -211,6 +218,10 @@ export function ValoresRecebidosProcesso({
             v.categorias[c].total,
           ])}
           geral={geral}
+          repasse={resumirRepasse(
+            perfil.pagamentos.filter((p) => p.atendimento_id === registro.id),
+          )}
+          repasseGeral={geral ? resumirRepasse(perfil.pagamentos).repasse : null}
         />
       </div>
 
@@ -430,12 +441,17 @@ function CardTotal({
   pendente,
   porCategoria,
   geral,
+  repasse,
+  repasseGeral,
 }: {
   total: number;
   quantidade: number;
   pendente: number;
   porCategoria: [string, number][];
   geral: { recebido: number; pendente: number } | null;
+  /** Repasse Ricardo Friedl deste processo (motor único src/lib/repasse.ts). */
+  repasse: ResumoRepasse;
+  repasseGeral: number | null;
 }) {
   return (
     <article
@@ -469,6 +485,13 @@ function CardTotal({
             </li>
           ))}
         </ul>
+        <p
+          className="mt-2 flex justify-between gap-2 rounded-md bg-money/10 px-2 py-1 text-xs"
+          data-testid="repasse-processo"
+        >
+          <span className="font-semibold">Repasse Ricardo Friedl ({REGRA_REPASSE.rotulo})</span>
+          <span className="tabular font-bold text-money">{formatBRL(repasse.repasse)}</span>
+        </p>
         {pendente > 0 ? (
           <p className="mt-2 text-xs">
             <span className="text-muted-foreground">Pendente (previsto, fora do total): </span>
@@ -480,6 +503,13 @@ function CardTotal({
         <p className="border-t border-border pt-2 text-xs">
           <span className="font-semibold">Total geral do cliente (todos os processos): </span>
           <span className="tabular font-semibold">{formatBRL(geral.recebido)}</span>
+          {repasseGeral !== null ? (
+            <span className="text-muted-foreground">
+              {" "}
+              · repasse{" "}
+              <span className="tabular font-semibold text-money">{formatBRL(repasseGeral)}</span>
+            </span>
+          ) : null}
           {geral.pendente > 0 ? (
             <span className="text-muted-foreground"> · pendente {formatBRL(geral.pendente)}</span>
           ) : null}
@@ -728,6 +758,11 @@ function LinhaRecebimento({ pagamento: p, perfil }: { pagamento: Pagamento; perf
           <span className="tabular text-sm text-muted-foreground">
             {formatDate(p.data_pagamento)}
           </span>
+          {entradaElegivel(p) ? (
+            <span className="tabular text-xs font-semibold text-money">
+              repasse {REGRA_REPASSE.rotulo}: {formatBRL(repasseDaEntrada(p))}
+            </span>
+          ) : null}
           <span className="text-xs text-muted-foreground">
             {ROTULO_TIPO_PAGAMENTO[p.tipo] ?? p.tipo}
           </span>

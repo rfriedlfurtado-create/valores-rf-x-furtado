@@ -21,6 +21,7 @@
  * Módulo puro (sem imports de runtime do app) para poder ser testado isoladamente.
  */
 
+import { resumirRepasse, type ResumoRepasse } from "./repasse";
 import { ROTULO_CLASSIFICACAO, type ClassificacaoEntrada, type StatusCliente } from "./tipos";
 
 export type Situacao = "EM_TRAMITACAO" | "PAGO" | "ARQUIVADO";
@@ -262,6 +263,8 @@ export interface Indicadores {
   entradas: ResumoEntradas;
   /** Clientes com mais de uma entrada financeira. */
   clientesComVariasEntradas: number;
+  /** Repasse Ricardo Friedl (5 %) sobre os valores efetivamente recebidos — motor único em repasse.ts. */
+  repasse: ResumoRepasse;
 }
 
 export function calcularIndicadores(
@@ -332,6 +335,7 @@ export function calcularIndicadores(
     importadosNoMes,
     entradas: resumirEntradas(todasEntradas),
     clientesComVariasEntradas,
+    repasse: resumirRepasse(todasEntradas),
   };
 }
 

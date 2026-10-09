@@ -22,6 +22,7 @@ import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogNumeroProcesso } from "@/components/DialogNumeroProcesso";
 import { DialogPagamento } from "@/components/DialogPagamento";
+import { ValoresRecebidosERepasse } from "@/components/RepasseCliente";
 import { ValoresRecebidosProcesso } from "@/components/ValoresRecebidosProcesso";
 import {
   OutrosRegistrosFinanceiros,
@@ -77,6 +78,7 @@ import {
 } from "@/lib/rf/valores";
 import { classificarEntrada, definirProcessoPago, vincularEntradaProcesso } from "@/lib/acoes";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
+import { entradaElegivel, REGRA_REPASSE, repasseDaEntrada, resumirRepasse } from "@/lib/repasse";
 import { fraseQuantidadeEntradas, motivoDaPagina, resumirEntradas } from "@/lib/situacao";
 import { previstosDoClienteQuery } from "@/lib/valoresPrevistos";
 import {
@@ -274,6 +276,9 @@ function PerfilCliente() {
         selecionar={(id) => ir({ registro: id, ...(visao ? { visao } : {}) })}
         trocarVisao={(v) => ir(v ? { visao: v } : {})}
       />
+
+      {/* VALORES RECEBIDOS E REPASSE: consolidado do cliente (todos os processos). */}
+      <ValoresRecebidosERepasse key={`${cliente.id}-repasse`} perfil={perfil} />
 
       {revisoesAbertas.length ? <Revisoes perfil={perfil} revisoes={revisoesAbertas} /> : null}
 
@@ -1416,6 +1421,7 @@ function BlocoValoresRecebidos({
       ? ["Nenhum valor recebido registrado."]
       : [
           `Total recebido: ${formatBRL(resumo.total)}`,
+          `Repasse Ricardo Friedl (${REGRA_REPASSE.rotulo}): ${formatBRL(resumirRepasse(pagamentos).repasse)}`,
           fraseQuantidadeEntradas(resumo.quantidade, alvoFrase),
           ...CATEGORIAS_OFICIAIS.filter((c) => resumo.porClassificacao[c].quantidade > 0).map(
             (c) => `${ROTULO_CLASSIFICACAO[c]}: ${formatBRL(resumo.porClassificacao[c].valor)}`,
@@ -1496,6 +1502,7 @@ function BlocoValoresRecebidos({
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Data</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right">Repasse {REGRA_REPASSE.rotulo}</TableHead>
                   <TableHead className="min-w-44">Tipo do valor</TableHead>
                   <TableHead>Processo</TableHead>
                   <TableHead>Origem</TableHead>
@@ -1512,6 +1519,9 @@ function BlocoValoresRecebidos({
                       </TableCell>
                       <TableCell className="text-right">
                         <Valor valor={p.valor} />
+                      </TableCell>
+                      <TableCell className="text-right tabular text-sm text-money">
+                        {entradaElegivel(p) ? formatBRL(repasseDaEntrada(p)) : "—"}
                       </TableCell>
                       <TableCell>
                         <SeletorCategoria pagamento={p} />

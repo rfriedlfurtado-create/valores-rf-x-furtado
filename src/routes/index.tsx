@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   CalendarPlus,
   Coins,
+  HandCoins,
   UserCheck,
   Users,
   Wallet,
@@ -11,6 +12,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { ModalCorrespondencia } from "@/components/ModalCorrespondencia";
+import { PainelRepasse } from "@/components/PainelRepasse";
 import { StatCard } from "@/components/StatCard";
 import { TabelaCorrespondencias } from "@/components/TabelaCorrespondencias";
 import { PageHeader, SecaoVazia } from "@/components/layout/AppShell";
@@ -30,6 +32,7 @@ import { calcularIndicadores } from "@/lib/situacao";
 import { saldoPrevisto, valoresPrevistosQuery } from "@/lib/valoresPrevistos";
 import { ClipboardList, Landmark } from "lucide-react";
 import { formatBRL, formatPercent } from "@/lib/format";
+import { REGRA_REPASSE } from "@/lib/repasse";
 import {
   GRUPOS_CLASSIFICACAO,
   ROTULO_GRUPO,
@@ -181,6 +184,24 @@ function Dashboard() {
         </div>
       </PageHeader>
 
+      {/* Indicador principal do sistema: quanto o Furtado recebeu e quanto cabe ao Ricardo Friedl. */}
+      <div className="mb-4 grid gap-4 sm:grid-cols-2" data-testid="indicadores-repasse">
+        <StatCard
+          titulo="Total recebido"
+          valor={formatBRL(ind.repasse.recebido)}
+          icone={Coins}
+          tom="money"
+          descricao={`${ind.repasse.quantidade} valor(es) efetivamente recebido(s) pelo Furtado`}
+        />
+        <StatCard
+          titulo={`Repasse Ricardo Friedl — ${REGRA_REPASSE.rotulo}`}
+          valor={formatBRL(ind.repasse.repasse)}
+          icone={HandCoins}
+          tom="money"
+          descricao={`${REGRA_REPASSE.rotulo} de cada recebimento · Contratual, Atrasados e Sucumbência`}
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           titulo="Clientes"
@@ -201,13 +222,6 @@ function Dashboard() {
           valor={ind.totalClientes}
           icone={UserCheck}
           descricao={`${ind.importadosNoMes} importado(s) neste mês`}
-        />
-        <StatCard
-          titulo="Valor recebido"
-          valor={formatBRL(ind.valorRecebido)}
-          icone={Coins}
-          tom="money"
-          descricao={`${ind.quantidadePagamentos} pagamento(s) registrado(s)`}
         />
         <StatCard
           titulo="Importados no mês"
@@ -237,6 +251,8 @@ function Dashboard() {
           descricao={`${pendentesComHistorico.length} com histórico de pagamento`}
         />
       </div>
+
+      <PainelRepasse base={base} somenteRF={filtroRF === "rf"} />
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <DistribuicaoSituacao emTramitacao={ind.emTramitacao} jaPagos={ind.jaPagos} />
