@@ -139,6 +139,15 @@ export function repasseCentavos(e: EntradaRepasse): number {
   return aplicarPercentualCentavos(paraCentavos(e.valor), REGRA_REPASSE.percentual);
 }
 
+/**
+ * Parte do escritório (em centavos) de UMA entrada: valor recebido − repasse.
+ * Nunca 95 % calculado à parte — assim recebido = escritório + repasse, sempre.
+ */
+export function escritorioCentavos(e: EntradaRepasse): number {
+  if (!entradaElegivel(e)) return 0;
+  return paraCentavos(e.valor) - repasseCentavos(e);
+}
+
 /** Repasse (em reais) de UMA entrada. */
 export function repasseDaEntrada(e: EntradaRepasse): number {
   return deCentavos(repasseCentavos(e));
@@ -161,6 +170,8 @@ export interface TotaisRepasse {
   recebido: number;
   /** Soma dos repasses individuais (R$). */
   repasse: number;
+  /** Honorários do escritório = recebido − repasse (R$). Recebido = escritório + repasse, sempre. */
+  escritorio: number;
 }
 
 export interface ResumoRepasse extends TotaisRepasse {
@@ -211,6 +222,7 @@ export function resumirRepasse(entradas: readonly EntradaRepasse[]): ResumoRepas
         quantidade: acc[g].quantidade,
         recebido: deCentavos(acc[g].recebido),
         repasse: deCentavos(acc[g].repasse),
+        escritorio: deCentavos(acc[g].recebido - acc[g].repasse),
       },
     ]),
   ) as Record<GrupoRepasse, TotaisRepasse>;
@@ -218,6 +230,7 @@ export function resumirRepasse(entradas: readonly EntradaRepasse[]): ResumoRepas
     quantidade,
     recebido: deCentavos(recebido),
     repasse: deCentavos(repasse),
+    escritorio: deCentavos(recebido - repasse),
     percentual: REGRA_REPASSE.percentual,
     versaoRegra: REGRA_REPASSE.versao,
     porCategoria,

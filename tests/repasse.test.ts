@@ -91,9 +91,24 @@ describe("cálculo por entrada, categoria e cliente", () => {
     ]);
     expect(r.recebido).toBe(15000);
     expect(r.repasse).toBe(750);
-    expect(r.porCategoria.atrasados).toEqual({ quantidade: 1, recebido: 10000, repasse: 500 });
-    expect(r.porCategoria.implantacao).toEqual({ quantidade: 1, recebido: 2000, repasse: 100 });
-    expect(r.porCategoria.sucumbencia).toEqual({ quantidade: 1, recebido: 3000, repasse: 150 });
+    expect(r.porCategoria.atrasados).toEqual({
+      quantidade: 1,
+      recebido: 10000,
+      repasse: 500,
+      escritorio: 9500,
+    });
+    expect(r.porCategoria.implantacao).toEqual({
+      quantidade: 1,
+      recebido: 2000,
+      repasse: 100,
+      escritorio: 1900,
+    });
+    expect(r.porCategoria.sucumbencia).toEqual({
+      quantidade: 1,
+      recebido: 3000,
+      repasse: 150,
+      escritorio: 2850,
+    });
   });
 
   test("múltiplos recebimentos: total = soma dos repasses, sem dupla incidência", () => {
