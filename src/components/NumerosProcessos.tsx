@@ -1,3 +1,4 @@
+import { naturezaDoProcesso } from "@/lib/numeroProcesso";
 import { cn } from "@/lib/utils";
 import type { ProcessoResumo } from "@/lib/tipos";
 
@@ -19,6 +20,9 @@ export function NumerosProcessos({
       {visiveis.map((p) => (
         <span key={p.id} className="tabular text-xs">
           {p.numero || "Sem número"}
+          {naturezaDoProcesso(p.natureza, p.numero) === "administrativo" ? (
+            <span className="text-muted-foreground"> (adm.)</span>
+          ) : null}
           {p.tipo_acao ? <span className="text-muted-foreground"> · {p.tipo_acao}</span> : null}
         </span>
       ))}

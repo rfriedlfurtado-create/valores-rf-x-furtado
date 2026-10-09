@@ -9,6 +9,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { db } from "@/lib/furtado/persistencia";
 import { normalizarTexto } from "@/lib/situacao";
 import type { Pagamento } from "@/lib/tipos";
+import type { NaturezaProcesso } from "@/lib/numeroProcesso";
 import type { CategoriaProcessoCfg } from "@/lib/valoresProcesso";
 
 import type { ChaveCampo } from "./campos";
@@ -238,6 +239,8 @@ export interface RegistroRF {
   escritorio: string;
   modelo: string | null;
   numero_processo: string | null;
+  /** 'judicial' (numeração CNJ) | 'administrativo' (protocolo/procedimento) | null. */
+  natureza?: string | null;
   servico: string | null;
   situacao: string | null;
   dados_rf: DadosRF;
@@ -445,4 +448,43 @@ export async function resolverRevisao(
     p_extra: extra,
   });
   if (error) falha(error.message);
+}
+
+// ---------------------------------------------------------------------------
+// Número do processo (judicial — CNJ — ou administrativo), por processo
+// ---------------------------------------------------------------------------
+
+/** Altera o número e a natureza de UM processo (os demais não mudam). */
+export async function definirNumeroProcesso(params: {
+  id: string;
+  natureza: NaturezaProcesso;
+  numero: string | null;
+  /** Tipo de ação atual do processo (recalcula a chave de reconhecimento). */
+  tipoAcao?: string | null;
+}): Promise<void> {
+  const { error } = await db.rpc("definir_numero_processo", {
+    p_id: params.id,
+    p_natureza: params.natureza,
+    p_numero: params.numero,
+    p_extra: { tipo_norm: params.tipoAcao ? normalizarTexto(params.tipoAcao) : "" },
+  });
+  if (error) falha(error.message);
+}
+
+/** Cadastra um novo processo no perfil do cliente. Retorna o id criado. */
+export async function criarProcesso(params: {
+  clienteId: string;
+  natureza: NaturezaProcesso;
+  numero: string | null;
+  tipoAcao: string | null;
+}): Promise<string> {
+  const { data, error } = await db.rpc("criar_processo_cliente", {
+    p_cliente: params.clienteId,
+    p_natureza: params.natureza,
+    p_numero: params.numero,
+    p_tipo_acao: params.tipoAcao,
+    p_extra: { tipo_norm: params.tipoAcao ? normalizarTexto(params.tipoAcao) : "" },
+  });
+  if (error) falha(error.message);
+  return (data as { id: string }).id;
 }

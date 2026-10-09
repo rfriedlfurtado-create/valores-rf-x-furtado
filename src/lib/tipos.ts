@@ -152,6 +152,8 @@ export interface ProcessoResumo {
   id: string;
   cliente_id: string;
   numero: string | null;
+  /** 'judicial' | 'administrativo' | null (não informada). */
+  natureza?: string | null;
   tipo_acao: string | null;
   pago: boolean;
   pago_em: string | null;

@@ -58,6 +58,7 @@ interface AtendimentoBruto {
   id: string;
   cliente_id: string;
   numero_processo: string | null;
+  natureza: string | null;
   servico: string | null;
   pago: boolean | null;
   pago_em: string | null;
@@ -71,7 +72,7 @@ async function carregarBase(): Promise<BaseAgregada> {
     todasAsLinhas<AtendimentoBruto>((de, ate) =>
       db
         .from("atendimentos")
-        .select("id,cliente_id,numero_processo,servico,pago,pago_em,dados_rf")
+        .select("id,cliente_id,numero_processo,natureza,servico,pago,pago_em,dados_rf")
         .is("deleted_at", null)
         .order("created_at")
         .order("id")
@@ -83,6 +84,7 @@ async function carregarBase(): Promise<BaseAgregada> {
     id: a.id,
     cliente_id: a.cliente_id,
     numero: a.dados_rf?.numero || a.numero_processo || null,
+    natureza: a.natureza ?? null,
     tipo_acao: a.dados_rf?.tipo_acao || a.servico || null,
     pago: Boolean(a.pago),
     pago_em: a.pago_em,

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { BadgeStatus } from "@/components/BadgeSimilaridade";
 import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
+import { DialogNumeroProcesso } from "@/components/DialogNumeroProcesso";
 import { DialogPagamento } from "@/components/DialogPagamento";
 import { ValoresRecebidosProcesso } from "@/components/ValoresRecebidosProcesso";
 import {
@@ -49,6 +50,7 @@ import {
 } from "@/components/ui/table";
 import { BadgeEscritorio, escritoriosDoCliente, useVinculosEscritorio } from "@/lib/escritorio";
 import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
+import { naturezaDoProcesso, ROTULO_NATUREZA } from "@/lib/numeroProcesso";
 import { blocoPerfil, CAMPO_POR_CHAVE, NAO_INFORMADO, type ChaveCampo } from "@/lib/rf/campos";
 import {
   dadosDoRegistro,
@@ -122,6 +124,38 @@ function rotuloCampo(campo: string): string {
 function rotuloRegistro(r: RegistroRF): string {
   const d = dadosDoRegistro(r);
   return `${d.numero || "Sem número"} — ${d.tipo_acao || "Tipo de ação não informado"}`;
+}
+
+/** "Judicial" / "Administrativo" (ou null quando não informado). */
+function rotuloNatureza(r: RegistroRF): string | null {
+  const n = naturezaDoProcesso(r.natureza, dadosDoRegistro(r).numero);
+  return n ? ROTULO_NATUREZA[n] : null;
+}
+
+/** Botão "Cadastrar processo" (abre o cadastro com número judicial/administrativo). */
+function BotaoCadastrarProcesso({
+  clienteId,
+  aoCriar,
+}: {
+  clienteId: string;
+  aoCriar: (id: string) => void;
+}) {
+  return (
+    <DialogNumeroProcesso
+      modo="cadastrar"
+      clienteId={clienteId}
+      aoCriar={aoCriar}
+      trigger={
+        <button
+          type="button"
+          className="flex min-w-48 items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Plus className="size-4" aria-hidden />
+          Cadastrar processo
+        </button>
+      }
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -951,7 +985,10 @@ function SecaoProcessos({
       </div>
 
       {perfil.registros.length === 0 && !valoresSemProcesso && !previstosSemProcesso ? (
-        <p className="px-5 py-5 text-sm text-muted-foreground">Cliente sem processo cadastrado.</p>
+        <div className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">Cliente sem processo cadastrado.</p>
+          <BotaoCadastrarProcesso clienteId={cliente.id} aoCriar={selecionar} />
+        </div>
       ) : null}
 
       {visiveis.length || valoresSemProcesso || previstosSemProcesso ? (
@@ -980,8 +1017,10 @@ function SecaoProcessos({
                 <span className={cn("tabular text-sm", ativo ? "font-bold" : "font-semibold")}>
                   {d.numero || "Sem número"}
                 </span>
-                {d.tipo_acao ? (
-                  <span className="text-xs text-muted-foreground">{d.tipo_acao}</span>
+                {d.tipo_acao || rotuloNatureza(r) ? (
+                  <span className="text-xs text-muted-foreground">
+                    {[rotuloNatureza(r), d.tipo_acao].filter(Boolean).join(" · ")}
+                  </span>
                 ) : null}
                 <BadgeStatus
                   texto={r.pago ? "Finalizado" : "Em andamento"}
@@ -1009,6 +1048,7 @@ function SecaoProcessos({
               </span>
             </button>
           ) : null}
+          <BotaoCadastrarProcesso clienteId={cliente.id} aoCriar={selecionar} />
         </div>
       ) : null}
 
@@ -1120,7 +1160,12 @@ function ProcessoSelecionado({
               </span>
             </span>
             <span className="flex flex-wrap items-center gap-2 text-base font-semibold">
-              <span className="tabular">{d.numero || "Sem número"}</span>
+              <span className="tabular whitespace-nowrap">{d.numero || "Sem número"}</span>
+              {rotuloNatureza(r) ? (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {rotuloNatureza(r)}
+                </span>
+              ) : null}
               <BadgeEscritorio escritorio={r.escritorio} />
               <BadgeStatus
                 texto={
@@ -1134,6 +1179,16 @@ function ProcessoSelecionado({
           </span>
         </button>
         <div className="flex flex-wrap gap-2">
+          <DialogNumeroProcesso
+            modo="editar"
+            processo={{ id: r.id, numero: d.numero, natureza: r.natureza, tipoAcao: d.tipo_acao }}
+            trigger={
+              <Button variant="outline" size="sm">
+                <Pencil className="size-4" aria-hidden />
+                {d.numero ? "Editar número" : "Informar número"}
+              </Button>
+            }
+          />
           <DialogPagamento
             clienteFixo={perfil.cliente}
             registro={{ id: r.id, rotulo: rotuloRegistro(r) }}
@@ -1194,14 +1249,18 @@ function ProcessoSelecionado({
         <CamposDoBloco
           campos={bloco.campos}
           valor={(c) => d[c]}
-          renderizar={(chave) => (
-            <CampoEditavel
-              key={`${r.id}-${chave}`}
-              chave={chave}
-              valor={d[chave]}
-              salvar={salvarCampoRegistro(r, chave)}
-            />
-          )}
+          renderizar={(chave) =>
+            chave === "numero" ? (
+              <CampoNumeroProcesso key={`${r.id}-${chave}`} registro={r} />
+            ) : (
+              <CampoEditavel
+                key={`${r.id}-${chave}`}
+                chave={chave}
+                valor={d[chave]}
+                salvar={salvarCampoRegistro(r, chave)}
+              />
+            )
+          }
         />
         {Object.keys(r.informacoes_adicionais ?? {}).length || linhas.length ? (
           <div className="space-y-4 border-t border-border p-4">
@@ -1227,6 +1286,47 @@ function ProcessoSelecionado({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Linha "Número do processo" do bloco do processo (mesmo layout dos demais campos). */
+function CampoNumeroProcesso({ registro: r }: { registro: RegistroRF }) {
+  const d = dadosDoRegistro(r);
+  const natureza = rotuloNatureza(r);
+  return (
+    <div className="grid gap-1 px-5 py-3 sm:grid-cols-[minmax(10rem,14rem)_1fr_auto] sm:items-center sm:gap-4">
+      <dt className="text-xs font-medium text-muted-foreground">Número do processo</dt>
+      <dd className="min-w-0 text-sm">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            className={cn(
+              "tabular break-words",
+              d.numero ? "font-medium text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {d.numero || NAO_INFORMADO}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {natureza ?? "Tipo (judicial/administrativo) não informado"}
+          </span>
+        </span>
+      </dd>
+      <DialogNumeroProcesso
+        modo="editar"
+        processo={{ id: r.id, numero: d.numero, natureza: r.natureza, tipoAcao: d.tipo_acao }}
+        trigger={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-self-start sm:justify-self-end"
+            aria-label="Editar Número do processo"
+          >
+            <Pencil className="size-3.5" aria-hidden />
+            Editar
+          </Button>
+        }
+      />
     </div>
   );
 }
