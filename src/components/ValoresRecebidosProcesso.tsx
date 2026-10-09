@@ -263,45 +263,50 @@ function CardCategoria({
       data-testid={`card-${s.categoria}`}
       data-status={s.status}
       className={cn(
-        "flex min-h-56 flex-col gap-3 rounded-xl border bg-card p-4 xl:min-h-[calc((100cqw-2.25rem)/4)]",
+        "@container/card flex min-h-56 flex-col gap-3 rounded-xl border bg-card p-4 xl:min-h-[calc((100cqw-2.25rem)/4)]",
         s.status === "recebido" && "border-success/40",
         s.status === "pendente" && "border-border",
         s.status === "nao_havera" && "border-dashed border-border bg-muted/30",
       )}
     >
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <h4 className="text-sm font-semibold uppercase tracking-wide">{rotulo}</h4>
-        {/* SUCUMBÊNCIA: "Não haverá sucumbência" logo abaixo da situação. */}
-        <div className="flex flex-col items-end gap-2">
+      <header className="flex flex-col items-start gap-1.5 @min-[15rem]/card:flex-row @min-[15rem]/card:justify-between @min-[15rem]/card:gap-2">
+        <h4 className="min-w-0 break-words text-sm font-semibold uppercase tracking-wide">
+          {rotulo}
+        </h4>
+        <span className="shrink-0">
           <BadgeStatus texto={ROTULO_STATUS_CATEGORIA[s.status]} tom={tom} />
-          {s.categoria === "sucumbencia" ? (
-            s.naoHavera ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={naoHavera.isPending}
-                onClick={() => naoHavera.mutate(false)}
-              >
-                <Undo2 className="size-4" aria-hidden />
-                Desfazer “Não haverá”
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={naoHavera.isPending}
-                onClick={() =>
-                  s.quantidade > 0
-                    ? toast.error(MSG_CONFLITO_NAO_HAVERA, { duration: 10_000 })
-                    : naoHavera.mutate(true)
-                }
-              >
-                Não haverá sucumbência
-              </Button>
-            )
-          ) : null}
-        </div>
+        </span>
       </header>
+      {/* Linha de ação com a mesma altura em todos os cards (alinha o conteúdo);
+          só SUCUMBÊNCIA usa: "Não haverá sucumbência" logo abaixo da situação. */}
+      <div className="-mt-1 flex h-8 items-center justify-start @min-[15rem]/card:justify-end">
+        {s.categoria === "sucumbencia" ? (
+          s.naoHavera ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={naoHavera.isPending}
+              onClick={() => naoHavera.mutate(false)}
+            >
+              <Undo2 className="size-4" aria-hidden />
+              Desfazer “Não haverá”
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={naoHavera.isPending}
+              onClick={() =>
+                s.quantidade > 0
+                  ? toast.error(MSG_CONFLITO_NAO_HAVERA, { duration: 10_000 })
+                  : naoHavera.mutate(true)
+              }
+            >
+              Não haverá sucumbência
+            </Button>
+          )
+        ) : null}
+      </div>
 
       <div className="min-w-0 flex-1">
         {s.quantidade > 0 ? (
