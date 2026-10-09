@@ -22,6 +22,7 @@ import { BlocoExpansivel, ResumoLinhas } from "@/components/BlocoExpansivel";
 import { BotaoExcluirCliente } from "@/components/BotaoExcluirCliente";
 import { DialogNumeroProcesso } from "@/components/DialogNumeroProcesso";
 import { DialogPagamento } from "@/components/DialogPagamento";
+import { InputMoeda } from "@/components/InputMoeda";
 import { ValoresRecebidosERepasse } from "@/components/RepasseCliente";
 import { ValoresRecebidosProcesso } from "@/components/ValoresRecebidosProcesso";
 import {
@@ -468,23 +469,38 @@ function CampoEditavel({
               mutation.mutate();
             }}
           >
-            <Input
-              autoFocus
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-              className="h-9"
-              aria-label={nome}
-              placeholder={
-                campo?.tipo === "data"
-                  ? "dd/mm/aaaa"
-                  : campo?.tipo === "datahora"
-                    ? "dd/mm/aaaa hh:mm:ss"
-                    : ""
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setEditando(false);
-              }}
-            />
+            {campo?.tipo === "moeda" ? (
+              <div className="w-48">
+                <InputMoeda
+                  autoFocus
+                  value={texto}
+                  onChange={setTexto}
+                  className="h-9"
+                  aria-label={nome}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setEditando(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <Input
+                autoFocus
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                className="h-9"
+                aria-label={nome}
+                placeholder={
+                  campo?.tipo === "data"
+                    ? "dd/mm/aaaa"
+                    : campo?.tipo === "datahora"
+                      ? "dd/mm/aaaa hh:mm:ss"
+                      : ""
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditando(false);
+                }}
+              />
+            )}
             <Button
               type="submit"
               size="icon"

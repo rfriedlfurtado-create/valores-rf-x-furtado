@@ -422,7 +422,12 @@ export function valorParaEdicao(chave: ChaveCampo, valor: string | null | undefi
     const f = formatarValor(chave, valor);
     return f === NAO_INFORMADO ? "" : f;
   }
-  if ((tipo === "moeda" || tipo === "percentual") && NUMERO.test(valor))
+  if (tipo === "moeda" && NUMERO.test(valor))
+    return Number(valor).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  if (tipo === "percentual" && NUMERO.test(valor))
     return Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
   return valor;
 }

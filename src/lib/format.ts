@@ -75,3 +75,84 @@ export function todayISO(): string {
 export function formatPercent(value: number): string {
   return `${value.toFixed(0)}%`;
 }
+
+// ---------------------------------------------------------------------------
+// Campo de valor (R$): máscara 99.999,99 — o usuário digita só os números;
+// os pontos de milhar são colocados automaticamente e a vírgula separa os
+// centavos. Funções puras usadas por <InputMoeda> (testadas em tests/format-moeda.test.ts).
+// ---------------------------------------------------------------------------
+
+/** Máximo de dígitos na parte inteira (o banco guarda numeric(14,2)). */
+const MAX_DIGITOS_INTEIROS = 12;
+
+function agruparMilhar(digitos: string): string {
+  return digitos.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/**
+ * Formata o texto enquanto o usuário digita: "1250" → "1.250",
+ * "99999,9" → "99.999,9". Pontos digitados são ignorados (o sistema coloca);
+ * a vírgula (ou a primeira vírgula) inicia os centavos, no máximo 2.
+ */
+export function mascararMoeda(texto: string): string {
+  if (!texto) return "";
+  const virgula = texto.indexOf(",");
+  const inteiroBruto = (virgula >= 0 ? texto.slice(0, virgula) : texto).replace(/\D/g, "");
+  const inteiro = inteiroBruto.replace(/^0+(?=\d)/, "").slice(0, MAX_DIGITOS_INTEIROS);
+  if (virgula < 0) return inteiro ? agruparMilhar(inteiro) : "";
+  const centavos = texto
+    .slice(virgula + 1)
+    .replace(/\D/g, "")
+    .slice(0, 2);
+  return `${agruparMilhar(inteiro || "0")},${centavos}`;
+}
+
+/** Ao sair do campo: completa os centavos ("9.999" → "9.999,00", "9,5" → "9,50"). */
+export function completarCentavos(texto: string): string {
+  const m = mascararMoeda(texto);
+  if (!m) return "";
+  const [inteiro, centavos = ""] = m.split(",");
+  return `${inteiro},${centavos.padEnd(2, "0")}`;
+}
+
+/** Número → texto do campo ("1250.5" → "1.250,50"). */
+export function valorParaCampoMoeda(valor: number | string | null | undefined): string {
+  if (valor === null || valor === undefined || valor === "") return "";
+  const n = typeof valor === "string" ? Number(valor) : valor;
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Texto colado (planilha, outro sistema) → texto do campo. Aceita
+ * "1.250,00", "1250,5", "1250.50", "R$ 1.250,00" e "1,250.00".
+ */
+export function colarMoeda(texto: string): string {
+  const t = texto.replace(/[^\d,.-]/g, "");
+  if (!t) return "";
+  const ultimaVirgula = t.lastIndexOf(",");
+  const ultimoPonto = t.lastIndexOf(".");
+  let n: number;
+  if (ultimaVirgula > ultimoPonto) n = parseBRL(t);
+  else if (ultimoPonto >= 0 && /\.\d{1,2}$/.test(t)) n = Number(t.replace(/,/g, ""));
+  else n = Number(t.replace(/[.,]/g, ""));
+  return Number.isFinite(n) ? valorParaCampoMoeda(Math.abs(n)) : "";
+}
+
+/**
+ * Posição do cursor após reformatar: mantém o mesmo número de dígitos (e a
+ * vírgula) à esquerda do cursor, para não pular para o fim ao editar no meio.
+ */
+export function posicaoCursorMoeda(
+  formatado: string,
+  digitosAntes: number,
+  depoisDaVirgula: boolean,
+): number {
+  let vistos = 0;
+  const virgula = formatado.indexOf(",");
+  for (let i = 0; i < formatado.length; i++) {
+    if (vistos >= digitosAntes && (!depoisDaVirgula || virgula < 0 || i > virgula)) return i;
+    if (/\d/.test(formatado[i]!)) vistos += 1;
+  }
+  return formatado.length;
+}

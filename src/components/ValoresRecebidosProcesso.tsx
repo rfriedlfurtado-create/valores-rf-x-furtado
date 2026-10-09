@@ -34,6 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { InputMoeda } from "@/components/InputMoeda";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -50,7 +51,7 @@ import {
   excluirRecebimento,
   type AlteracaoRecebimento,
 } from "@/lib/acoes";
-import { formatBRL, formatDate, parseBRL } from "@/lib/format";
+import { formatBRL, formatDate, parseBRL, valorParaCampoMoeda } from "@/lib/format";
 import {
   entradaElegivel,
   REGRA_REPASSE,
@@ -661,7 +662,7 @@ function SituacaoDaCategoria({
 }) {
   const rotulo = ROTULO_CATEGORIA_PROCESSO[s.categoria];
   const [total, setTotal] = useState(
-    s.totalPrevisto !== null ? s.totalPrevisto.toFixed(2).replace(".", ",") : "",
+    s.totalPrevisto !== null ? valorParaCampoMoeda(s.totalPrevisto) : "",
   );
   const salvarTotal = useAcaoValores(
     (valor: number | null) =>
@@ -692,13 +693,11 @@ function SituacaoDaCategoria({
       >
         <div className="grid min-w-40 flex-1 gap-1">
           <Label htmlFor={`total-${s.categoria}`}>Total a receber (opcional)</Label>
-          <Input
+          <InputMoeda
             id={`total-${s.categoria}`}
-            inputMode="decimal"
             placeholder="Ex.: 12.500,00"
             value={total}
-            onChange={(e) => setTotal(e.target.value)}
-            className="tabular"
+            onChange={setTotal}
           />
         </div>
         <Button type="submit" size="sm" variant="outline" disabled={salvarTotal.isPending}>
@@ -835,7 +834,7 @@ function FormEdicao({
   perfil: PerfilRF;
   fechar: () => void;
 }) {
-  const [valor, setValor] = useState(Number(p.valor).toFixed(2).replace(".", ","));
+  const [valor, setValor] = useState(valorParaCampoMoeda(p.valor));
   const [data, setData] = useState(p.data_pagamento);
   const [categoria, setCategoria] = useState<string>(p.classificacao ?? "nenhuma");
   const [processo, setProcesso] = useState<string>(p.atendimento_id ?? "nenhum");
@@ -863,13 +862,7 @@ function FormEdicao({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1">
           <Label htmlFor={`ed-valor-${p.id}`}>Valor (R$)</Label>
-          <Input
-            id={`ed-valor-${p.id}`}
-            inputMode="decimal"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            className="tabular"
-          />
+          <InputMoeda id={`ed-valor-${p.id}`} value={valor} onChange={setValor} />
         </div>
         <div className="grid gap-1">
           <Label htmlFor={`ed-data-${p.id}`}>Data do recebimento</Label>

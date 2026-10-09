@@ -14,9 +14,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { InputMoeda } from "@/components/InputMoeda";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatBRL, parseBRL, todayISO } from "@/lib/format";
+import { formatBRL, parseBRL, todayISO, valorParaCampoMoeda } from "@/lib/format";
 import { EVENTOS, useSincronizar } from "@/lib/sincronizacao";
 import { receberValorPrevisto, saldoPrevisto, type ValorPrevisto } from "@/lib/valoresPrevistos";
 import { mensagemReabertura } from "@/lib/valoresProcesso";
@@ -32,7 +33,7 @@ export function DialogReceberPrevisto({
   const sincronizar = useSincronizar();
   const [aberto, setAberto] = useState(false);
   const saldo = saldoPrevisto(v);
-  const [valor, setValor] = useState(saldo ? saldo.toFixed(2).replace(".", ",") : "");
+  const [valor, setValor] = useState(saldo ? valorParaCampoMoeda(saldo) : "");
   const [data, setData] = useState(todayISO());
   const [quitado, setQuitado] = useState(true);
   const mutation = useMutation({
@@ -65,13 +66,7 @@ export function DialogReceberPrevisto({
         <div className="grid gap-3">
           <div className="grid gap-1">
             <Label htmlFor={`rv-${v.id}`}>Valor recebido (R$)</Label>
-            <Input
-              id={`rv-${v.id}`}
-              inputMode="decimal"
-              value={valor}
-              onChange={(e) => setValor(e.target.value)}
-              className="tabular"
-            />
+            <InputMoeda id={`rv-${v.id}`} value={valor} onChange={setValor} />
           </div>
           <div className="grid gap-1">
             <Label htmlFor={`rd-${v.id}`}>Data do recebimento</Label>

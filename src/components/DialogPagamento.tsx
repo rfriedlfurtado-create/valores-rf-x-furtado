@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { InputMoeda } from "@/components/InputMoeda";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -153,13 +154,12 @@ export function DialogPagamento({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="pagamento-valor">Valor (R$)</Label>
-              <Input
+              <InputMoeda
                 id="pagamento-valor"
-                inputMode="decimal"
                 placeholder="1.250,00"
                 value={valor}
-                onChange={(evento) => setValor(evento.target.value)}
-                className="tabular text-lg font-semibold"
+                onChange={setValor}
+                className="text-lg font-semibold"
               />
             </div>
             <div className="grid gap-2">
